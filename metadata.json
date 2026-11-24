@@ -1,0 +1,8 @@
+{
+  "name": "FleetBD Ops — Monitoring Unit Running & Breakdown",
+  "description": "Operational dispatch board for tracking running fleet units (PMSC & PMVV), automatic breakdown (BD) unit transfers, and live BD dashboard reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
