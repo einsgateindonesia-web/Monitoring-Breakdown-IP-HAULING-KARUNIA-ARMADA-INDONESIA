@@ -13,6 +13,8 @@ import {
 } from '../data/componentHierarchy';
 import { BdStatus, FleetUnit, RfuHistoryRecord } from '../types/fleet';
 import {
+  calculateDurationMinutes,
+  formatDurationId,
   formatMrNumbers,
   formatReadableDateId,
   getCurrentDateYYYYMMDD,
@@ -24,6 +26,7 @@ import { Time24Input } from './Time24Input';
 interface RfuHistoryViewProps {
   history: RfuHistoryRecord[];
   masterUnits: FleetUnit[];
+  isOwnerOrAdmin: boolean;
   onUpdateItem: (
     id: string,
     patch: Partial<Omit<RfuHistoryRecord, 'id' | 'fleetGroup'>>
@@ -42,6 +45,7 @@ interface RfuHistoryViewProps {
     detailSubKomponen: string;
     activityPerbaikan: string;
     lastStatus: BdStatus;
+    picMekanik?: string;
   }) => { ok: boolean; message?: string };
   onDeleteItem: (id: string) => void;
   onExportCsv: () => void;
@@ -55,6 +59,7 @@ interface EditDraft {
   tanggalBd: string;
   jamBd: string;
   tanggalRfu: string;
+  originalTanggalRfu: string;
   jamRfu: string;
   lokasi: string;
   mrNumbers: string[];
@@ -64,6 +69,7 @@ interface EditDraft {
   detailSubKomponen: string;
   activityPerbaikan: string;
   lastStatus: BdStatus;
+  picMekanik: string;
 }
 
 interface ComponentCascadeFieldsProps {
@@ -349,6 +355,7 @@ function ComponentCascadeFields({
 export function RfuHistoryView({
   history,
   masterUnits,
+  isOwnerOrAdmin,
   onUpdateItem,
   onAddItem,
   onDeleteItem,
@@ -375,6 +382,7 @@ export function RfuHistoryView({
   const [newDetailSubKomponen, setNewDetailSubKomponen] = useState('');
   const [newActivityPerbaikan, setNewActivityPerbaikan] = useState('');
   const [newStatus, setNewStatus] = useState<BdStatus>('B0');
+  const [newPicMekanik, setNewPicMekanik] = useState('');
   const [addError, setAddError] = useState('');
 
   const filtered = useMemo(() => {
@@ -385,6 +393,7 @@ export function RfuHistoryView({
         h.unitCode.toLowerCase().includes(q) ||
         (h.lokasi ?? '').toLowerCase().includes(q) ||
         (h.mrNumbers ?? []).join(' ').toLowerCase().includes(q) ||
+        (h.picMekanik ?? '').toLowerCase().includes(q) ||
         h.keterangan.toLowerCase().includes(q) ||
         (h.komponen ?? '').toLowerCase().includes(q) ||
         (h.subKomponen ?? '').toLowerCase().includes(q) ||
@@ -402,6 +411,7 @@ export function RfuHistoryView({
       tanggalBd: item.tanggalBd,
       jamBd: item.jamBd,
       tanggalRfu: item.tanggalRfu,
+      originalTanggalRfu: item.tanggalRfu,
       jamRfu: item.jamRfu,
       lokasi: item.lokasi ?? '',
       mrNumbers: item.mrNumbers ?? [],
@@ -411,6 +421,7 @@ export function RfuHistoryView({
       detailSubKomponen: item.detailSubKomponen ?? '',
       activityPerbaikan: item.activityPerbaikan ?? '',
       lastStatus: item.lastStatus,
+      picMekanik: item.picMekanik ?? '',
     });
   };
 
@@ -421,7 +432,7 @@ export function RfuHistoryView({
       unitCode: editDraft.unitCode,
       tanggalBd: editDraft.tanggalBd,
       jamBd: editDraft.jamBd,
-      tanggalRfu: editDraft.tanggalRfu,
+      tanggalRfu: isOwnerOrAdmin ? editDraft.tanggalRfu : editDraft.originalTanggalRfu,
       jamRfu: editDraft.jamRfu,
       lokasi: editDraft.lokasi,
       mrNumbers: editDraft.mrNumbers,
@@ -431,6 +442,7 @@ export function RfuHistoryView({
       detailSubKomponen: editDraft.detailSubKomponen,
       activityPerbaikan: editDraft.activityPerbaikan,
       lastStatus: editDraft.lastStatus,
+      picMekanik: editDraft.picMekanik,
     });
     setEditDraft(null);
   };
@@ -451,6 +463,7 @@ export function RfuHistoryView({
       detailSubKomponen: newDetailSubKomponen,
       activityPerbaikan: newActivityPerbaikan,
       lastStatus: newStatus,
+      picMekanik: newPicMekanik,
     });
     if (!res.ok) {
       setAddError(res.message ?? 'Gagal menambah catatan RFU.');
@@ -465,6 +478,7 @@ export function RfuHistoryView({
     setNewDetailSubKomponen('');
     setNewActivityPerbaikan('');
     setNewStatus('B0');
+    setNewPicMekanik('');
     setAddError('');
     setShowAddForm(false);
   };
@@ -484,19 +498,19 @@ export function RfuHistoryView({
       </datalist>
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Riwayat Unit RFU</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900">Riwayat Unit RFU</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Catatan detail problem, komponen, sub komponen, hingga activity perbaikan unit BD yang telah selesai (RFU).
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onBackToBoard}
-            className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[40px] sm:min-h-0 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0 text-center"
           >
             Kembali ke Board
           </button>
@@ -506,7 +520,7 @@ export function RfuHistoryView({
               setShowAddForm((prev) => !prev);
               setAddError('');
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             {showAddForm ? (
               <>
@@ -516,7 +530,7 @@ export function RfuHistoryView({
             ) : (
               <>
                 <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Tambah Catatan RFU</span>
+                <span>Tambah RFU</span>
               </>
             )}
           </button>
@@ -524,41 +538,43 @@ export function RfuHistoryView({
             type="button"
             onClick={onExportCsv}
             disabled={history.length === 0}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
             <span>Export CSV</span>
           </button>
-          {history.length > 0 && !confirmClearAll && (
+          {isOwnerOrAdmin && history.length > 0 && !confirmClearAll && (
             <button
               type="button"
               onClick={() => setConfirmClearAll(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-white hover:bg-red-50 border border-red-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+              className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-red-700 bg-white hover:bg-red-50 border border-red-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Bersihkan Log</span>
             </button>
           )}
-          {confirmClearAll && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-red-50 border border-red-200 rounded-md text-xs">
+          {isOwnerOrAdmin && confirmClearAll && (
+            <div className="col-span-2 sm:col-span-1 min-h-[40px] sm:min-h-0 inline-flex items-center justify-between sm:justify-start gap-1.5 px-2.5 py-1.5 bg-red-50 border border-red-200 rounded-md text-xs">
               <span className="text-red-800 font-medium">Hapus semua log?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  onClearHistory();
-                  setConfirmClearAll(false);
-                }}
-                className="px-2 py-0.5 text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
-              >
-                Ya, Hapus
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmClearAll(false)}
-                className="px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                Batal
-              </button>
+              <div className="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearHistory();
+                    setConfirmClearAll(false);
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearAll(false)}
+                  className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -750,8 +766,8 @@ export function RfuHistoryView({
               labelClassName="block text-[11px] font-semibold text-slate-600"
             />
 
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+              <div className="flex-1 min-w-0">
                 <label
                   htmlFor="add-rfu-activity"
                   className="block text-[11px] font-semibold text-slate-600 mb-1"
@@ -767,9 +783,25 @@ export function RfuHistoryView({
                   className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
               </div>
+              <div className="sm:w-32">
+                <label
+                  htmlFor="add-rfu-pic"
+                  className="block text-[11px] font-semibold text-slate-600 mb-1"
+                >
+                  PIC MEKANIK
+                </label>
+                <input
+                  id="add-rfu-pic"
+                  type="text"
+                  value={newPicMekanik}
+                  onChange={(e) => setNewPicMekanik(e.target.value)}
+                  placeholder="Opsional..."
+                  className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
               <button
                 type="submit"
-                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto min-h-[42px] sm:min-h-0 px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
               >
                 Simpan
               </button>
@@ -780,10 +812,10 @@ export function RfuHistoryView({
         </form>
       )}
 
-      {/* Table Card */}
+      {/* Table & Mobile Cards Card */}
       <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
+        <div className="px-3.5 sm:px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-2 sm:gap-3">
+          <div className="relative flex-1 max-w-md min-w-0">
             <Search
               className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
               aria-hidden="true"
@@ -792,23 +824,171 @@ export function RfuHistoryView({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari unit, nomor MR, problem, komponen, sub komponen, atau activity..."
+              placeholder="Cari unit, nomor MR, problem, komponen..."
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
-          <span className="text-xs text-slate-500 font-mono tabular-nums">
+          <span className="text-xs text-slate-500 font-mono tabular-nums whitespace-nowrap shrink-0">
             {filtered.length} catatan
           </span>
         </div>
 
-        <div className="overflow-x-auto ops-scroll">
-          <table className="w-full text-left border-collapse text-xs min-w-[1440px]">
+        {/* Mobile Card View (< md) */}
+        <div className="md:hidden divide-y divide-slate-200">
+          {filtered.length === 0 ? (
+            <div className="py-14 px-4 text-center">
+              <div className="max-w-xs mx-auto space-y-2">
+                <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
+                  <History className="w-4 h-4" aria-hidden="true" />
+                </div>
+                <p className="text-sm font-medium text-slate-800">
+                  Belum ada riwayat unit RFU
+                </p>
+                <p className="text-xs text-slate-500">
+                  Setiap unit BD yang diklik tombol RFU akan otomatis tercatat di sini dan dapat dilengkapi detail komponen serta activity perbaikannya.
+                </p>
+              </div>
+            </div>
+          ) : (
+            filtered.map((item, idx) => {
+              const componentSummary = [
+                item.komponen?.trim(),
+                item.subKomponen?.trim(),
+                item.detailSubKomponen?.trim(),
+              ]
+                .filter(Boolean)
+                .join(' → ');
+              const durText = formatDurationId(
+                calculateDurationMinutes(item.tanggalBd, item.jamBd, item.tanggalRfu, item.jamRfu)
+              );
+
+              return (
+                <article key={item.id} className="p-3.5 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-sm font-mono font-bold text-slate-900">
+                          {item.unitCode}
+                        </span>
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200 rounded tabular-nums">
+                          Durasi {durText}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Status akhir: {formatBdStatus(item.lastStatus)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(item)}
+                        aria-label={`Edit catatan RFU ${item.unitCode}`}
+                        className="min-h-[38px] min-w-[38px] inline-flex items-center justify-center text-blue-700 bg-blue-50 border border-blue-200 rounded-md cursor-pointer"
+                      >
+                        <Pencil className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                      {isOwnerOrAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteItem(item.id)}
+                          aria-label={`Hapus catatan RFU ${item.unitCode}`}
+                          className="min-h-[38px] min-w-[38px] inline-flex items-center justify-center text-slate-500 hover:text-red-600 bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 border border-slate-200/80 rounded-md text-xs">
+                    <div>
+                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Mulai BD
+                      </span>
+                      <span className="font-mono tabular-nums text-slate-800 font-medium">
+                        {formatReadableDateId(item.tanggalBd)} · {item.jamBd}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Selesai RFU
+                      </span>
+                      <span className="font-mono tabular-nums text-emerald-700 font-semibold">
+                        {formatReadableDateId(item.tanggalRfu)} · {item.jamRfu}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <p className="text-slate-600">
+                        <span className="text-slate-400">Lokasi:</span>{' '}
+                        <span className="text-slate-800 font-medium">
+                          {item.lokasi?.trim() || '—'}
+                        </span>
+                      </p>
+                      <p className="text-slate-600 font-mono tabular-nums">
+                        <span className="font-sans text-slate-400">MR:</span>{' '}
+                        <span className="text-slate-800 font-medium">
+                          {formatMrNumbers(item.mrNumbers, '—')}
+                        </span>
+                      </p>
+                      {item.picMekanik?.trim() && (
+                        <p className="text-slate-600">
+                          <span className="text-slate-400">PIC:</span>{' '}
+                          <span className="text-slate-800 font-medium">{item.picMekanik}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {item.keterangan?.trim() && (
+                      <p className="text-slate-800 leading-relaxed">
+                        <span className="text-slate-400">Problem:</span> {item.keterangan}
+                      </p>
+                    )}
+
+                    {componentSummary && (
+                      <p className="text-slate-700">
+                        <span className="text-slate-400">Komponen:</span>{' '}
+                        <span className="font-medium">{componentSummary}</span>
+                      </p>
+                    )}
+
+                    {item.activityPerbaikan?.trim() ? (
+                      <p className="text-slate-700">
+                        <span className="text-slate-400">Activity:</span> {item.activityPerbaikan}
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(item)}
+                        className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 hover:underline cursor-pointer py-1"
+                      >
+                        <Pencil className="w-3 h-3" aria-hidden="true" />
+                        <span>Lengkapi Komponen &amp; Activity Perbaikan</span>
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Table (>= md) */}
+        <div className="hidden md:block overflow-x-auto ops-scroll">
+          <table className="w-full text-left border-collapse text-xs min-w-[1540px]">
             <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
               <tr>
                 <th className="py-2.5 pl-4 pr-2 w-10 font-mono">NO</th>
                 <th className="py-2.5 px-2 w-24">UNIT</th>
                 <th className="py-2.5 px-2 w-36">TGL / JAM BD</th>
                 <th className="py-2.5 px-2 w-36">TGL / JAM RFU</th>
+                <th className="py-2.5 px-2 w-24">DURASI</th>
                 <th className="py-2.5 px-2 w-36">POSISI / LOKASI BD</th>
                 <th className="py-2.5 px-2 w-40">NOMOR MR</th>
                 <th className="py-2.5 px-2 w-48">KETERANGAN PROBLEM</th>
@@ -823,7 +1003,7 @@ export function RfuHistoryView({
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-16 px-4 text-center">
+                  <td colSpan={14} className="py-16 px-4 text-center">
                     <div className="max-w-xs mx-auto space-y-2">
                       <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
                         <History className="w-4 h-4" aria-hidden="true" />
@@ -838,68 +1018,83 @@ export function RfuHistoryView({
                   </td>
                 </tr>
               ) : (
-                filtered.map((item, idx) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 align-top">
-                    <td className="py-2.5 pl-4 pr-2 font-mono tabular-nums text-slate-400">
-                      {idx + 1}
-                    </td>
-                    <td className="py-2.5 px-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
-                      {item.unitCode}
-                    </td>
-                    <td className="py-2.5 px-2 font-mono tabular-nums text-slate-700 whitespace-nowrap">
-                      {formatReadableDateId(item.tanggalBd)} · {item.jamBd}
-                    </td>
-                    <td className="py-2.5 px-2 font-mono tabular-nums text-emerald-700 font-medium whitespace-nowrap">
-                      {formatReadableDateId(item.tanggalRfu)} · {item.jamRfu}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-700">
-                      {item.lokasi?.trim() ? item.lokasi : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 font-mono tabular-nums text-slate-800">
-                      {formatMrNumbers(item.mrNumbers, '—')}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-800">
-                      {item.keterangan?.trim() ? item.keterangan : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-700 font-medium">
-                      {item.komponen?.trim() ? item.komponen : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-700">
-                      {item.subKomponen?.trim() ? item.subKomponen : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-700">
-                      {item.detailSubKomponen?.trim() ? item.detailSubKomponen : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-700">
-                      {item.activityPerbaikan?.trim() ? item.activityPerbaikan : '—'}
-                    </td>
-                    <td className="py-2.5 px-2 text-slate-600">
-                      {formatBdStatus(item.lastStatus)}
-                    </td>
-                    <td className="py-2.5 pl-2 pr-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(item)}
-                          title="Edit detail riwayat RFU"
-                          aria-label={`Edit catatan RFU ${item.unitCode}`}
-                          className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                        >
-                          <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteItem(item.id)}
-                          title="Hapus catatan ini"
-                          aria-label={`Hapus catatan RFU ${item.unitCode}`}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((item, idx) => {
+                  const durText = formatDurationId(
+                    calculateDurationMinutes(item.tanggalBd, item.jamBd, item.tanggalRfu, item.jamRfu)
+                  );
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/80 align-top">
+                      <td className="py-2.5 pl-4 pr-2 font-mono tabular-nums text-slate-400">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
+                        <div>{item.unitCode}</div>
+                        {item.picMekanik?.trim() && (
+                          <div className="text-[10px] font-sans font-normal text-slate-500 mt-0.5">
+                            PIC: {item.picMekanik}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono tabular-nums text-slate-700 whitespace-nowrap">
+                        {formatReadableDateId(item.tanggalBd)} · {item.jamBd}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono tabular-nums text-emerald-700 font-medium whitespace-nowrap">
+                        {formatReadableDateId(item.tanggalRfu)} · {item.jamRfu}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono tabular-nums text-slate-800 font-semibold whitespace-nowrap">
+                        {durText}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-700">
+                        {item.lokasi?.trim() ? item.lokasi : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 font-mono tabular-nums text-slate-800">
+                        {formatMrNumbers(item.mrNumbers, '—')}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-800">
+                        {item.keterangan?.trim() ? item.keterangan : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-700 font-medium">
+                        {item.komponen?.trim() ? item.komponen : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-700">
+                        {item.subKomponen?.trim() ? item.subKomponen : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-700">
+                        {item.detailSubKomponen?.trim() ? item.detailSubKomponen : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-700">
+                        {item.activityPerbaikan?.trim() ? item.activityPerbaikan : '—'}
+                      </td>
+                      <td className="py-2.5 px-2 text-slate-600">
+                        {formatBdStatus(item.lastStatus)}
+                      </td>
+                      <td className="py-2.5 pl-2 pr-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(item)}
+                            title="Edit detail riwayat RFU"
+                            aria-label={`Edit catatan RFU ${item.unitCode}`}
+                            className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                          {isOwnerOrAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteItem(item.id)}
+                              title="Hapus catatan ini"
+                              aria-label={`Hapus catatan RFU ${item.unitCode}`}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -909,13 +1104,13 @@ export function RfuHistoryView({
       {/* Edit Catatan RFU Modal */}
       {editDraft && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/45 p-0 sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-edit-rfu-title"
         >
-          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-t-2xl sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]">
+            <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-2">
               <div>
                 <h2 id="modal-edit-rfu-title" className="text-sm font-semibold text-slate-900">
                   Edit Catatan Riwayat RFU — {editDraft.unitCode}
@@ -1041,10 +1236,17 @@ export function RfuHistoryView({
                   <input
                     id="edit-rfu-tgl-rfu"
                     type="date"
+                    disabled={!isOwnerOrAdmin}
+                    title={isOwnerOrAdmin ? undefined : 'Ubah tanggal RFU khusus Admin'}
                     value={editDraft.tanggalRfu}
                     onChange={(e) => setEditDraft({ ...editDraft, tanggalRfu: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-2.5 py-1.5 text-xs font-mono bg-white disabled:bg-slate-100 disabled:text-slate-500 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
+                  {!isOwnerOrAdmin && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Ubah tanggal RFU khusus Admin
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label
@@ -1062,19 +1264,37 @@ export function RfuHistoryView({
                 </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor={`edit-rfu-mr-${editDraft.id}-input-0`}
-                  className="block text-xs font-semibold text-slate-700 mb-1"
-                >
-                  NOMOR MR (Material Request)
-                </label>
-                <StackedMrEditor
-                  key={`mr-${editDraft.id}`}
-                  value={editDraft.mrNumbers}
-                  onChange={(nextMr) => setEditDraft({ ...editDraft, mrNumbers: nextMr })}
-                  idPrefix={`edit-rfu-mr-${editDraft.id}`}
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor={`edit-rfu-mr-${editDraft.id}-input-0`}
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    NOMOR MR (Material Request)
+                  </label>
+                  <StackedMrEditor
+                    key={`mr-${editDraft.id}`}
+                    value={editDraft.mrNumbers}
+                    onChange={(nextMr) => setEditDraft({ ...editDraft, mrNumbers: nextMr })}
+                    idPrefix={`edit-rfu-mr-${editDraft.id}`}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="edit-rfu-pic"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    PIC MEKANIK
+                  </label>
+                  <input
+                    id="edit-rfu-pic"
+                    type="text"
+                    value={editDraft.picMekanik}
+                    onChange={(e) => setEditDraft({ ...editDraft, picMekanik: e.target.value })}
+                    placeholder="Nama mekanik..."
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1132,17 +1352,17 @@ export function RfuHistoryView({
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 pb-safe">
                 <button
                   type="button"
                   onClick={() => setEditDraft(null)}
-                  className="px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
+                  className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md cursor-pointer"
+                  className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md cursor-pointer"
                 >
                   Simpan Perubahan
                 </button>

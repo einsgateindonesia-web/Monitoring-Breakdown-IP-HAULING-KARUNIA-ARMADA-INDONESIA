@@ -146,15 +146,15 @@ export function PopulationManagerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/45 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pop-manager-title"
     >
-      <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[88vh]">
+      <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-t-2xl sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[88vh]">
         {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-4">
-          <div>
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 id="pop-manager-title" className="text-sm font-semibold text-slate-900">
               Kelola &amp; Upload Populasi Unit
             </h2>
@@ -166,53 +166,55 @@ export function PopulationManagerModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup kelola populasi"
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 rounded-md">
-            <button
-              type="button"
-              onClick={() => setTab('upload')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                tab === 'upload'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Upload / Paste Excel</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('edit')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                tab === 'edit'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Edit Populasi ({masterUnits.length})</span>
-            </button>
+        <div className="px-4 sm:px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+          <div className="overflow-x-auto max-w-full">
+            <div className="inline-flex items-center gap-1 p-0.5 bg-slate-200/70 rounded-md">
+              <button
+                type="button"
+                onClick={() => setTab('upload')}
+                className={`min-h-[36px] sm:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  tab === 'upload'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Upload / Paste Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('edit')}
+                className={`min-h-[36px] sm:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  tab === 'edit'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Edit Populasi ({masterUnits.length})</span>
+              </button>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => exportPopulationCsv(masterUnits)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[38px] sm:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-            <span>Download Populasi (CSV)</span>
+            <span>Download CSV</span>
           </button>
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 overflow-auto ops-scroll p-5">
+        <div className="flex-1 overflow-auto ops-scroll p-4 sm:p-5">
           {tab === 'upload' ? (
             <div className="space-y-4">
               {/* File Picker + Paste Area */}
@@ -399,8 +401,8 @@ export function PopulationManagerModal({
           ) : (
             <div className="space-y-4">
               {/* Add Single Unit + Search + Reset */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="relative flex-1 min-w-[200px]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+                <div className="relative flex-1 min-w-0">
                   <Search
                     className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
                     aria-hidden="true"
@@ -414,7 +416,7 @@ export function PopulationManagerModal({
                   />
                 </div>
 
-                <form onSubmit={handleAddInlineUnit} className="flex items-center gap-1.5">
+                <form onSubmit={handleAddInlineUnit} className="flex items-center gap-1.5 w-full sm:w-auto">
                   <input
                     type="text"
                     value={newCodeInput}
@@ -423,11 +425,11 @@ export function PopulationManagerModal({
                       setNewCodeError('');
                     }}
                     placeholder="Tambah unit (misal PMVV 240)"
-                    className="w-44 px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="flex-1 sm:w-44 min-w-0 px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+                    className="min-h-[38px] sm:min-h-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>Tambah</span>
@@ -607,11 +609,11 @@ export function PopulationManagerModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 pb-safe">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md cursor-pointer"
+            className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md cursor-pointer"
           >
             Tutup
           </button>
@@ -620,11 +622,11 @@ export function PopulationManagerModal({
               type="button"
               onClick={handleApplyImport}
               disabled={parsedResult.codes.length === 0}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer"
+              className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer whitespace-nowrap"
             >
               {importMode === 'append'
-                ? `Tambahkan ke Populasi (${previewStats.newCount})`
-                : `Terapkan Populasi Baru (${previewStats.totalParsed})`}
+                ? `Tambah (${previewStats.newCount})`
+                : `Terapkan (${previewStats.totalParsed})`}
             </button>
           )}
         </div>

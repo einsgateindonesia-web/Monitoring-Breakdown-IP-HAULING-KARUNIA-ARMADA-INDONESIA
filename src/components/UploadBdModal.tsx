@@ -21,6 +21,7 @@ export interface BdBulkImportPayload {
 
 interface UploadBdModalProps {
   isOpen: boolean;
+  isOwnerOrAdmin: boolean;
   masterUnits: FleetUnit[];
   bdRecords: BreakdownRecord[];
   onClose: () => void;
@@ -32,6 +33,7 @@ interface UploadBdModalProps {
 
 export function UploadBdModal({
   isOpen,
+  isOwnerOrAdmin,
   masterUnits,
   bdRecords,
   onClose,
@@ -46,6 +48,7 @@ export function UploadBdModal({
   const [importMode, setImportMode] = useState<BdImportMode>('upsert');
   const [autoRegisterUnknownUnits, setAutoRegisterUnknownUnits] = useState(true);
   const [markMissingAsRfu, setMarkMissingAsRfu] = useState(true);
+  const effectiveAutoRegister = isOwnerOrAdmin && autoRegisterUnknownUnits;
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -87,7 +90,7 @@ export function UploadBdModal({
       const inBd = activeBdCodeSet.has(code);
 
       if (!inMaster) {
-        if (autoRegisterUnknownUnits) {
+        if (effectiveAutoRegister) {
           newUnitCount += 1;
           newBdCount += 1;
         } else {
@@ -120,7 +123,7 @@ export function UploadBdModal({
     parsedResult.rows,
     masterCodeSet,
     activeBdCodeSet,
-    autoRegisterUnknownUnits,
+    effectiveAutoRegister,
     importMode,
     markMissingAsRfu,
     bdRecords,
@@ -202,7 +205,7 @@ export function UploadBdModal({
     const res = onApplyImport({
       rows: parsedResult.rows,
       mode: importMode,
-      autoRegisterUnknownUnits,
+      autoRegisterUnknownUnits: effectiveAutoRegister,
       markMissingAsRfu,
     });
 
@@ -217,15 +220,15 @@ export function UploadBdModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/45 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-bd-title"
     >
-      <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-t-2xl sm:rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          <div>
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+          <div className="min-w-0 flex-1">
             <h2 id="upload-bd-title" className="text-sm font-semibold text-slate-900">
               Upload &amp; Update Breakdown (Excel / CSV)
             </h2>
@@ -234,20 +237,20 @@ export function UploadBdModal({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
             <button
               type="button"
               onClick={downloadBdExcelTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+              className="min-h-[38px] sm:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-              <span>Download Template (.xlsx)</span>
+              <span>Template (.xlsx)</span>
             </button>
             <button
               type="button"
               onClick={onClose}
               aria-label="Tutup upload breakdown"
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+              className="min-h-[38px] min-w-[38px] inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -255,7 +258,7 @@ export function UploadBdModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto ops-scroll p-5 space-y-4">
+        <div className="flex-1 overflow-auto ops-scroll p-4 sm:p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             {/* Left: File Picker + Options */}
             <div className="md:col-span-5 space-y-3">
@@ -383,15 +386,21 @@ export function UploadBdModal({
                 )}
 
                 <div className="pt-2 border-t border-slate-100">
-                  <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                  <label
+                    className={`flex items-start gap-2 text-[11px] ${
+                      isOwnerOrAdmin ? 'text-slate-700 cursor-pointer' : 'text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
                     <input
                       type="checkbox"
-                      checked={autoRegisterUnknownUnits}
+                      disabled={!isOwnerOrAdmin}
+                      checked={effectiveAutoRegister}
                       onChange={(e) => setAutoRegisterUnknownUnits(e.target.checked)}
-                      className="mt-0.5 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+                      className="mt-0.5 rounded border-slate-300 text-blue-700 focus:ring-blue-600 disabled:opacity-50"
                     />
                     <span>
-                      Otomatis daftarkan kode unit baru ke populasi armada jika belum terdaftar.
+                      Otomatis daftarkan kode unit baru ke populasi armada jika belum terdaftar
+                      {!isOwnerOrAdmin && ' (Khusus Admin)'}.
                     </span>
                   </label>
                 </div>
@@ -518,7 +527,7 @@ export function UploadBdModal({
                       let actionLabel = 'Pindah ke BD';
                       let actionClass = 'text-red-700 font-medium';
                       if (!inMaster) {
-                        if (autoRegisterUnknownUnits) {
+                        if (effectiveAutoRegister) {
                           actionLabel = 'Unit Baru + BD';
                           actionClass = 'text-blue-700 font-medium';
                         } else {
@@ -576,11 +585,11 @@ export function UploadBdModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 pb-safe">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md cursor-pointer"
+            className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-md cursor-pointer"
           >
             Batal
           </button>
@@ -591,9 +600,9 @@ export function UploadBdModal({
               parsedResult.rows.length === 0 ||
               (previewSummary.applicableCount === 0 && importMode !== 'replace')
             }
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer"
+            className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer whitespace-nowrap"
           >
-            Terapkan Update BD ({previewSummary.applicableCount} unit)
+            Terapkan ({previewSummary.applicableCount} unit)
           </button>
         </div>
       </div>

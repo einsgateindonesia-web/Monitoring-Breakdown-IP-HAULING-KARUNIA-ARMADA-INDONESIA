@@ -257,3 +257,78 @@ export const BD_STATUS_STYLES: Record<
     bar: 'bg-slate-500',
   },
 };
+
+import { PartStatus } from '../types/fleet';
+
+export interface PartStatusMeta {
+  code: Exclude<PartStatus, ''>;
+  label: string;
+}
+
+export const PART_STATUS_CATALOG: PartStatusMeta[] = [
+  { code: 'WAITING_PR_PO', label: 'Menunggu PR / PO' },
+  { code: 'ORDERED', label: 'Order / Proses Beli' },
+  { code: 'IN_TRANSIT', label: 'Dalam Pengiriman' },
+  { code: 'READY_WAREHOUSE', label: 'Ready di Gudang' },
+  { code: 'INSTALLED', label: 'Sudah Terpasang' },
+];
+
+export const PART_STATUS_LABELS: Record<PartStatus, string> = {
+  '': 'Belum Diatur',
+  WAITING_PR_PO: 'Menunggu PR / PO',
+  ORDERED: 'Order / Proses Beli',
+  IN_TRANSIT: 'Dalam Pengiriman',
+  READY_WAREHOUSE: 'Ready di Gudang',
+  INSTALLED: 'Sudah Terpasang',
+};
+
+export function normalizePartStatus(raw?: string | null): PartStatus {
+  const val = String(raw ?? '').trim().toUpperCase();
+  if (
+    val === 'WAITING_PR_PO' ||
+    val === 'ORDERED' ||
+    val === 'IN_TRANSIT' ||
+    val === 'READY_WAREHOUSE' ||
+    val === 'INSTALLED'
+  ) {
+    return val;
+  }
+  return '';
+}
+
+export const PART_STATUS_STYLES: Record<
+  PartStatus,
+  { text: string; bg: string; border: string }
+> = {
+  '': {
+    text: 'text-slate-600',
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+  },
+  WAITING_PR_PO: {
+    text: 'text-red-700',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+  },
+  ORDERED: {
+    text: 'text-amber-800',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+  },
+  IN_TRANSIT: {
+    text: 'text-blue-800',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+  },
+  READY_WAREHOUSE: {
+    text: 'text-emerald-800',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+  },
+  INSTALLED: {
+    text: 'text-teal-800',
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+  },
+};
+

@@ -8,6 +8,9 @@
 5. **No Blanket Reads or Vulnerable List Queries**: All operational board/shard collections disable `allow list` (`allow list: if false`) and rely on deterministic `get` document subscriptions (`onSnapshot(doc(...))`). `members` and `invites` `allow list` rules validate `resource.data` directly (`uid` or `ownerUid == request.auth.uid`) with zero `get()`/`exists()` inside `allow list`.
 6. **Temporal & Structural Integrity**: All `createdAt`, `joinedAt`, and `updatedAt` timestamps must equal `request.time`. All `updatedByUid` fields must equal `request.auth.uid`. Every document enforces strict `hasAll`/`hasOnly` keys on create and `affectedKeys().hasOnly(...)` on update, plus `.size()` limits on all strings, maps, and arrays.
 
+7. **Admin-Only High-Risk Mutations**: Modifying master fleet population (`board/fleet`), updating `targetPaPct` on `board/meta`, removing/clearing RFU logs (`rfuMonths/*`), and managing team roles/invites strictly require `isWorkspaceAdmin(workspaceId)`.
+8. **Immutable Audit Trail**: `board/auditLog` allows members to read (`get`) and append bounded entries (`<= 150`) with `updatedByUid == request.auth.uid` and `updatedAt == request.time`, while prohibiting deletion (`allow delete: if false`).
+
 ## 2. The "Dirty Dozen" Attack Payloads
 1. **Unauthenticated Read/Write**: Read `workspaces/ip-hauling-kai/board/activeBd` with `auth == null` -> `PERMISSION_DENIED`.
 2. **Unverified Email Spoofing**: Authenticated user with `token.email == 'einsgateindonesia@gmail.com'` and `token.email_verified == false` tries to create/read workspace -> `PERMISSION_DENIED`.
@@ -20,4 +23,4 @@
 9. **ID Poisoning / 1MB String Exhaustion**: Attacker uses a 2KB document ID or sends a 500-char `displayName` -> `PERMISSION_DENIED`.
 10. **PII Cross-User Read**: Signed-in coworker tries to `get` `users/{otherUid}/private/info` -> `PERMISSION_DENIED`.
 11. **Invite Enumeration Scraping**: Non-owner signed-in user attempts `list` on `workspaces/ip-hauling-kai/invites` -> `PERMISSION_DENIED`.
-12. **Immutable Ownership Tampering**: Operator or member attempts to change `ownerUid` on `workspaces/ip-hauling-kai` or `monthKey` on `rfuMonths/2026-11` -> `PERMISSION_DENIED`.
+12. **Immutable Ownership & Operator RBAC Tampering**: Operator attempts to change `ownerUid`, overwrite `board/fleet`, modify `targetPaPct`, or delete/clear `rfuMonths` records -> `PERMISSION_DENIED`.

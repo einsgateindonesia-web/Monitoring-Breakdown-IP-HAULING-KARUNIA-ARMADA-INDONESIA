@@ -1,13 +1,31 @@
-import { useMemo, useState } from 'react';
-import { Check, ChevronDown, Copy, Download, RotateCcw, Search, Trash2, Upload, Wrench } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Download,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  Upload,
+  Wrench,
+} from 'lucide-react';
 import {
   BD_LOCATION_SUGGESTIONS,
   BD_STATUS_CATALOG,
   BD_STATUS_LABELS,
   BD_STATUS_STYLES,
 } from '../data/initialUnits';
-import { BdStatus, BreakdownRecord, FleetUnit } from '../types/fleet';
-import { getCurrentTimeHHMM } from '../utils/fleetUtils';
+import { BdStatus, BreakdownRecord, FleetGroup, FleetUnit } from '../types/fleet';
+import {
+  calculateDurationMinutes,
+  formatDurationId,
+  getAgingSeverity,
+  getCurrentTimeHHMM,
+  normalizeMrList,
+} from '../utils/fleetUtils';
 import { CompactMrInput, InlineTableMrCell } from './MrListInput';
 import { Time24Input } from './Time24Input';
 
@@ -21,11 +39,24 @@ interface InputBdPanelProps {
     mrNumbers: string[];
     keterangan: string;
     status: BdStatus;
+    picMekanik?: string;
+    etr?: string;
   }) => { ok: boolean; message?: string };
   onUpdateBd: (
     id: string,
     patch: Partial<
-      Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'mrNumbers' | 'keterangan' | 'status'>
+      Pick<
+        BreakdownRecord,
+        | 'jamBd'
+        | 'lokasi'
+        | 'mrNumbers'
+        | 'keterangan'
+        | 'status'
+        | 'picMekanik'
+        | 'etr'
+        | 'partStatus'
+        | 'partNote'
+      >
     >
   ) => void;
   onMarkRfu: (id: string) => void;
@@ -54,11 +85,24 @@ export function InputBdPanel({
   const [mrNumbers, setMrNumbers] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
+  const [picMekanik, setPicMekanik] = useState('');
+  const [etr, setEtr] = useState('');
   const [formError, setFormError] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [mobileFormOpen, setMobileFormOpen] = useState(false);
 
   const [bdSearch, setBdSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | BdStatus>('ALL');
+  const [groupFilter, setGroupFilter] = useState<'ALL' | FleetGroup>('ALL');
+  const [onlyWithMr, setOnlyWithMr] = useState(false);
+  const [onlyAgingOver6h, setOnlyAgingOver6h] = useState(false);
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const unitSuggestions = useMemo(() => {
     const q = unitInput.trim().toLowerCase();
@@ -69,20 +113,43 @@ export function InputBdPanel({
   const filteredBdRecords = useMemo(() => {
     const q = bdSearch.trim().toLowerCase();
     return bdRecords.filter((rec) => {
-      const matchStatus = statusFilter === 'ALL' || rec.status === statusFilter;
+      if (statusFilter !== 'ALL' && rec.status !== statusFilter) return false;
+      if (groupFilter !== 'ALL' && rec.fleetGroup !== groupFilter) return false;
+      if (onlyWithMr && normalizeMrList(rec.mrNumbers).length === 0) return false;
+      if (onlyAgingOver6h) {
+        const mins = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
+        if (mins === null || mins < 360) return false;
+      }
+
+      if (!q) return true;
       const statusLabel = (BD_STATUS_LABELS[rec.status] ?? '').toLowerCase();
       const mrJoined = (rec.mrNumbers ?? []).join(' ').toLowerCase();
-      const matchSearch =
-        !q ||
+      return (
         rec.unitCode.toLowerCase().includes(q) ||
         (rec.lokasi ?? '').toLowerCase().includes(q) ||
         mrJoined.includes(q) ||
         rec.keterangan.toLowerCase().includes(q) ||
+        (rec.picMekanik ?? '').toLowerCase().includes(q) ||
+        (rec.partNote ?? '').toLowerCase().includes(q) ||
         rec.status.toLowerCase().includes(q) ||
-        statusLabel.includes(q);
-      return matchStatus && matchSearch;
+        statusLabel.includes(q)
+      );
     });
-  }, [bdRecords, bdSearch, statusFilter]);
+  }, [bdRecords, bdSearch, statusFilter, groupFilter, onlyWithMr, onlyAgingOver6h, nowMs]);
+
+  const agingOver6hCount = useMemo(
+    () =>
+      bdRecords.filter((rec) => {
+        const mins = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
+        return mins !== null && mins >= 360;
+      }).length,
+    [bdRecords, nowMs]
+  );
+
+  const withMrCount = useMemo(
+    () => bdRecords.filter((rec) => normalizeMrList(rec.mrNumbers).length > 0).length,
+    [bdRecords]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,6 +160,8 @@ export function InputBdPanel({
       mrNumbers,
       keterangan,
       status,
+      picMekanik,
+      etr,
     });
     if (!res.ok) {
       setFormError(res.message ?? 'Gagal menginput unit BD.');
@@ -102,37 +171,41 @@ export function InputBdPanel({
     setLokasi('');
     setMrNumbers([]);
     setKeterangan('');
+    setPicMekanik('');
+    setEtr('');
     setJamBd(getCurrentTimeHHMM());
     setStatus('B0');
     setFormError('');
     setShowSuggestions(false);
+    setMobileFormOpen(false);
   };
 
   return (
-    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[540px] lg:h-[calc(100vh-250px)]">
+    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[420px] lg:min-h-[560px] lg:h-[calc(100vh-245px)]">
       {/* Header & Export Actions */}
-      <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-3.5 sm:px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Input BD Unit</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Unit yang terinput di sini otomatis berpindah dari daftar Unit Running ke tabel BD.
+            Unit yang terinput di sini otomatis berpindah dari Unit Running ke tabel BD (dilengkapi Durasi BD real-time, PIC &amp; ETR).
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={onOpenUploadBd}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Upload className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Upload Excel BD</span>
+            <span className="hidden sm:inline">Upload Excel BD</span>
+            <span className="sm:hidden">Upload XL</span>
           </button>
 
           <button
             type="button"
             onClick={onCopyWaReport}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             {copiedWa ? (
               <>
@@ -142,7 +215,8 @@ export function InputBdPanel({
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-                <span>Salin Laporan WA</span>
+                <span className="hidden sm:inline">Salin Laporan WA</span>
+                <span className="sm:hidden">Salin WA</span>
               </>
             )}
           </button>
@@ -150,18 +224,40 @@ export function InputBdPanel({
           <button
             type="button"
             onClick={onExportCsv}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-            <span>Export CSV</span>
+            <span className="hidden sm:inline">Export CSV</span>
+            <span className="sm:hidden">CSV</span>
           </button>
         </div>
+      </div>
+
+      {/* Mobile Collapsible Quick Form Toggle */}
+      <div className="md:hidden px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setMobileFormOpen((prev) => !prev)}
+          className="w-full inline-flex items-center justify-between px-3 py-2 min-h-[42px] text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-md cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Plus className="w-4 h-4 text-blue-700" aria-hidden="true" />
+            <span>Tambah Unit BD Cepat</span>
+          </span>
+          {mobileFormOpen ? (
+            <ChevronUp className="w-4 h-4 text-slate-500" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-500" aria-hidden="true" />
+          )}
+        </button>
       </div>
 
       {/* Fast Spreadsheet-Style Input Bar */}
       <form
         onSubmit={handleSubmit}
-        className="px-4 py-3 bg-slate-50 border-b border-slate-200"
+        className={`${
+          mobileFormOpen ? 'block' : 'hidden'
+        } md:block px-3.5 sm:px-4 py-3 bg-slate-50 border-b border-slate-200 space-y-2`}
       >
         <datalist id="bd-location-suggestions">
           {BD_LOCATION_SUGGESTIONS.map((loc) => (
@@ -169,7 +265,7 @@ export function InputBdPanel({
           ))}
         </datalist>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.15fr_0.85fr_1.15fr_1.35fr_1.5fr_1.2fr_auto] gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.75fr_1.1fr_1.2fr_1.4fr_1.1fr_auto] gap-2 items-end">
           {/* UNIT BD Combobox */}
           <div className="relative">
             <label
@@ -190,9 +286,9 @@ export function InputBdPanel({
                   setFormError('');
                   setShowSuggestions(true);
                 }}
-                placeholder={`Pilih dari ${runningUnits.length} unit...`}
+                placeholder={`Pilih (${runningUnits.length})...`}
                 autoComplete="off"
-                className="w-full pl-2.5 pr-7 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-md text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                className="w-full pl-2.5 pr-8 py-2 md:py-1.5 text-sm md:text-xs font-mono font-semibold bg-white border border-slate-300 rounded-md text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
               />
               <button
                 type="button"
@@ -202,9 +298,9 @@ export function InputBdPanel({
                   e.preventDefault();
                   setShowSuggestions((prev) => !prev);
                 }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
-                <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                <ChevronDown className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
               </button>
             </div>
             {showSuggestions && (
@@ -231,7 +327,7 @@ export function InputBdPanel({
                           setFormError('');
                           setShowSuggestions(false);
                         }}
-                        className="w-full text-left px-3 py-1.5 text-xs font-mono font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-800 flex items-center justify-between cursor-pointer"
+                        className="w-full text-left px-3 py-2 md:py-1.5 text-xs font-mono font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-800 flex items-center justify-between cursor-pointer"
                       >
                         <span className="flex items-center gap-2">
                           <span className="text-[10px] text-slate-400 tabular-nums w-5">
@@ -254,14 +350,14 @@ export function InputBdPanel({
               htmlFor="quick-jam-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
             >
-              JAM BD (24:00)
+              JAM BD
             </label>
             <Time24Input
               id="quick-jam-bd"
               value={jamBd}
               onChange={setJamBd}
               placeholder="00:00"
-              className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             />
           </div>
 
@@ -271,7 +367,7 @@ export function InputBdPanel({
               htmlFor="quick-lokasi-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
             >
-              POSISI / LOKASI BD
+              POSISI / LOKASI
             </label>
             <input
               id="quick-lokasi-bd"
@@ -279,8 +375,8 @@ export function InputBdPanel({
               list="bd-location-suggestions"
               value={lokasi}
               onChange={(e) => setLokasi(e.target.value)}
-              placeholder="KM 12 / Pit / Workshop..."
-              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              placeholder="KM 12 / Pit..."
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             />
           </div>
 
@@ -296,7 +392,7 @@ export function InputBdPanel({
               id="quick-mr-bd"
               value={mrNumbers}
               onChange={setMrNumbers}
-              placeholder="MR-001, MR-002..."
+              placeholder="MR-001..."
               ariaLabel="Nomor MR Unit BD"
             />
           </div>
@@ -314,8 +410,8 @@ export function InputBdPanel({
               type="text"
               value={keterangan}
               onChange={(e) => setKeterangan(e.target.value)}
-              placeholder="Keluhan / kerusakan unit..."
-              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              placeholder="Keluhan / problem..."
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             />
           </div>
 
@@ -331,7 +427,7 @@ export function InputBdPanel({
               id="quick-status-bd"
               value={status}
               onChange={(e) => setStatus(e.target.value as BdStatus)}
-              className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              className="w-full px-2.5 py-2 md:px-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             >
               {BD_STATUS_CATALOG.map((item) => (
                 <option key={item.code} value={item.code}>
@@ -345,73 +441,341 @@ export function InputBdPanel({
           <div>
             <button
               type="submit"
-              className="w-full px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="w-full px-3.5 py-2.5 md:py-1.5 min-h-[42px] md:min-h-0 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Pindah ke BD
             </button>
           </div>
         </div>
+
+        {/* Optional Field Ops Row: PIC Mekanik & ETR */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center pt-0.5">
+          <div>
+            <input
+              id="quick-pic-mekanik"
+              type="text"
+              value={picMekanik}
+              onChange={(e) => setPicMekanik(e.target.value)}
+              placeholder="PIC Mekanik (opsional)"
+              aria-label="PIC Mekanik"
+              className="w-full px-2.5 py-1.5 md:py-1 text-sm md:text-xs bg-white border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+          <div>
+            <Time24Input
+              id="quick-etr-bd"
+              value={etr}
+              onChange={setEtr}
+              placeholder="ETR siap (HH:mm)"
+              ariaLabel="Estimasi Ready ETR"
+              className="w-full px-2.5 py-1.5 md:py-1 text-sm md:text-xs font-mono tabular-nums bg-white border border-slate-200 rounded-md text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+          <p className="col-span-2 text-[11px] text-slate-400 hidden sm:block">
+            PIC Mekanik &amp; ETR dapat diisi sekarang atau langsung diedit di tabel.
+          </p>
+        </div>
+
         {formError && (
-          <p className="mt-2 text-xs text-red-600 font-medium">{formError}</p>
+          <p className="text-xs text-red-600 font-medium">{formError}</p>
         )}
       </form>
 
       {/* Filter Toolbar for BD Table */}
-      <div className="px-4 py-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search
-            className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-            aria-hidden="true"
-          />
-          <input
-            type="text"
-            value={bdSearch}
-            onChange={(e) => setBdSearch(e.target.value)}
-            placeholder="Filter unit BD, lokasi, nomor MR, atau keterangan..."
-            aria-label="Filter unit BD"
-            className="w-full pl-8 pr-3 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-          />
+      <div className="px-3.5 sm:px-4 py-2.5 border-b border-slate-200 space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search
+              className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              value={bdSearch}
+              onChange={(e) => setBdSearch(e.target.value)}
+              placeholder="Cari unit, lokasi, MR, PIC, keterangan..."
+              aria-label="Filter unit BD"
+              className="w-full pl-8 pr-3 py-2 md:py-1 text-sm md:text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="inline-flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-md">
+              {(['ALL', 'PMSC', 'PMVV'] as const).map((grp) => (
+                <button
+                  key={grp}
+                  type="button"
+                  onClick={() => setGroupFilter(grp)}
+                  className={`min-h-[32px] md:min-h-0 px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap ${
+                    groupFilter === grp
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {grp === 'ALL' ? 'Semua' : grp}
+                </button>
+              ))}
+            </div>
+
+            <select
+              id="bd-status-filter"
+              aria-label="Filter status unit BD"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'ALL' | BdStatus)}
+              className="flex-1 sm:flex-initial px-2.5 py-1.5 md:px-2 md:py-1 text-xs bg-white border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 sm:max-w-[210px]"
+            >
+              <option value="ALL">Status: Semua ({bdRecords.length})</option>
+              {BD_STATUS_CATALOG.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.code} - {item.label} ({bdRecords.filter((r) => r.status === item.code).length})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <label htmlFor="bd-status-filter" className="text-slate-500">
-            Status:
-          </label>
-          <select
-            id="bd-status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'ALL' | BdStatus)}
-            className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 max-w-[240px]"
-          >
-            <option value="ALL">Semua ({bdRecords.length})</option>
-            {BD_STATUS_CATALOG.map((item) => (
-              <option key={item.code} value={item.code}>
-                {item.code} - {item.label} ({bdRecords.filter((r) => r.status === item.code).length})
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOnlyWithMr((prev) => !prev)}
+              className={`min-h-[30px] md:min-h-0 px-2.5 py-1 font-medium rounded border transition-colors cursor-pointer whitespace-nowrap tabular-nums ${
+                onlyWithMr
+                  ? 'bg-blue-50 text-blue-800 border-blue-300 font-semibold'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Ada Nomor MR ({withMrCount})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOnlyAgingOver6h((prev) => !prev)}
+              className={`min-h-[30px] md:min-h-0 px-2.5 py-1 font-medium rounded border transition-colors cursor-pointer whitespace-nowrap tabular-nums ${
+                onlyAgingOver6h
+                  ? 'bg-amber-50 text-amber-800 border-amber-300 font-semibold'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Aging ≥ 6 Jam ({agingOver6hCount})
+            </button>
+          </div>
+
+          <span className="font-mono tabular-nums text-slate-500">
+            Menampilkan {filteredBdRecords.length} dari {bdRecords.length} unit BD
+          </span>
         </div>
       </div>
 
-      {/* Inline Editable Spreadsheet Table */}
-      <div className="flex-1 overflow-auto ops-scroll">
-        <table className="w-full text-left border-collapse min-w-[980px]">
+      {/* MOBILE CARD LIST VIEW (< md) */}
+      <div className="md:hidden divide-y divide-slate-200">
+        {filteredBdRecords.length === 0 ? (
+          <div className="py-12 px-4 text-center">
+            <div className="max-w-xs mx-auto space-y-2">
+              <div className="w-10 h-10 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
+                <Wrench className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <p className="text-sm font-medium text-slate-800">
+                {bdRecords.length === 0
+                  ? 'Belum ada unit BD saat ini'
+                  : 'Tidak ada data BD yang sesuai filter'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {bdRecords.length === 0
+                  ? 'Ketuk Tambah Unit BD Cepat di atas atau tombol Input BD di bawah layar.'
+                  : 'Ubah kata kunci pencarian atau reset filter di atas.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          filteredBdRecords.map((rec, idx) => {
+            const stStyle = BD_STATUS_STYLES[rec.status];
+            const durMin = calculateDurationMinutes(
+              rec.tanggalBd,
+              rec.jamBd,
+              undefined,
+              undefined,
+              nowMs
+            );
+            const severity = getAgingSeverity(durMin);
+
+            return (
+              <div key={rec.id} className="p-3.5 space-y-3 bg-white">
+                {/* Card Top Row: No, Unit, Durasi, & RFU / Delete Actions */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-mono tabular-nums text-slate-400">
+                      #{idx + 1}
+                    </span>
+                    <span className="text-sm font-mono font-bold text-slate-900 truncate">
+                      {rec.unitCode}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 text-[11px] font-mono tabular-nums rounded border shrink-0 ${
+                        severity === 'critical'
+                          ? 'bg-red-50 text-red-700 border-red-200 font-semibold'
+                          : severity === 'warning'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
+                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {formatDurationId(durMin)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onMarkRfu(rec.id)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[38px] text-xs font-semibold text-emerald-800 bg-emerald-50 active:bg-emerald-100 border border-emerald-200 rounded-md cursor-pointer whitespace-nowrap"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>RFU</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onCancelBd(rec.id)}
+                      aria-label={`Batalkan BD ${rec.unitCode}`}
+                      className="min-h-[38px] min-w-[38px] flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 rounded-md cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Jam BD & Status Row */}
+                <div className="grid grid-cols-[100px_1fr] gap-2 items-center">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      JAM BD
+                    </label>
+                    <Time24Input
+                      value={rec.jamBd}
+                      ariaLabel={`Jam BD ${rec.unitCode}`}
+                      onChange={(val) => onUpdateBd(rec.id, { jamBd: val })}
+                      className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      STATUS
+                    </label>
+                    <select
+                      value={rec.status}
+                      aria-label={`Status BD ${rec.unitCode}`}
+                      onChange={(e) =>
+                        onUpdateBd(rec.id, { status: e.target.value as BdStatus })
+                      }
+                      className={`w-full px-2.5 py-2 text-sm font-medium rounded-md border focus:outline-none focus:ring-2 focus:ring-blue-600 ${stStyle.bg} ${stStyle.text} ${stStyle.border}`}
+                    >
+                      {BD_STATUS_CATALOG.map((item) => (
+                        <option key={item.code} value={item.code} className="bg-white text-slate-900">
+                          {item.code} - {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* PIC Mekanik & ETR */}
+                <div className="grid grid-cols-[1fr_100px] gap-2 items-center">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      PIC MEKANIK
+                    </label>
+                    <input
+                      type="text"
+                      value={rec.picMekanik ?? ''}
+                      aria-label={`PIC mekanik ${rec.unitCode}`}
+                      placeholder="Nama mekanik..."
+                      onChange={(e) => onUpdateBd(rec.id, { picMekanik: e.target.value })}
+                      className="w-full px-2.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      ETR (24:00)
+                    </label>
+                    <Time24Input
+                      value={rec.etr ?? ''}
+                      ariaLabel={`ETR ${rec.unitCode}`}
+                      placeholder="HH:mm"
+                      onChange={(val) => onUpdateBd(rec.id, { etr: val })}
+                      className="w-full px-2.5 py-2 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Lokasi & Nomor MR */}
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      POSISI / LOKASI
+                    </label>
+                    <input
+                      type="text"
+                      list="bd-location-suggestions"
+                      value={rec.lokasi ?? ''}
+                      aria-label={`Posisi atau lokasi BD ${rec.unitCode}`}
+                      placeholder="Isi posisi / lokasi..."
+                      onChange={(e) => onUpdateBd(rec.id, { lokasi: e.target.value })}
+                      className="w-full px-2.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      NOMOR MR
+                    </label>
+                    <InlineTableMrCell
+                      unitCode={rec.unitCode}
+                      value={rec.mrNumbers ?? []}
+                      onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      KETERANGAN
+                    </label>
+                    <input
+                      type="text"
+                      value={rec.keterangan}
+                      aria-label={`Keterangan BD ${rec.unitCode}`}
+                      placeholder="Isi keterangan..."
+                      onChange={(e) => onUpdateBd(rec.id, { keterangan: e.target.value })}
+                      className="w-full px-2.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* DESKTOP INLINE EDITABLE SPREADSHEET TABLE (md+) */}
+      <div className="hidden md:block flex-1 overflow-auto ops-scroll">
+        <table className="w-full text-left border-collapse min-w-[1160px]">
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
               <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
               <th className="py-2 px-2 w-28">UNIT BD</th>
-              <th className="py-2 px-2 w-24">JAM BD</th>
-              <th className="py-2 px-2 w-36">POSISI / LOKASI</th>
-              <th className="py-2 px-2 w-44">NOMOR MR</th>
+              <th className="py-2 px-2 w-20">JAM BD</th>
+              <th className="py-2 px-2 w-24">DURASI</th>
+              <th className="py-2 px-2 w-32">POSISI / LOKASI</th>
+              <th className="py-2 px-2 w-40">NOMOR MR</th>
+              <th className="py-2 px-2 w-32">PIC MEKANIK</th>
+              <th className="py-2 px-2 w-20">ETR</th>
               <th className="py-2 px-2">KETERANGAN</th>
-              <th className="py-2 px-2 w-52">STATUS</th>
-              <th className="py-2 pl-2 pr-4 text-right w-32">AKSI</th>
+              <th className="py-2 px-2 w-48">STATUS</th>
+              <th className="py-2 pl-2 pr-4 text-right w-28">AKSI</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredBdRecords.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-16 px-4 text-center">
+                <td colSpan={11} className="py-16 px-4 text-center">
                   <div className="max-w-sm mx-auto space-y-2">
                     <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
                       <Wrench className="w-4 h-4" aria-hidden="true" />
@@ -424,7 +788,7 @@ export function InputBdPanel({
                     <p className="text-xs text-slate-500">
                       {bdRecords.length === 0
                         ? 'Pilih unit dari panel Unit Running di sebelah kiri atau ketik kode unit pada form di atas untuk memindahkannya ke daftar BD.'
-                        : 'Ubah kata kunci pencarian atau pilih filter status Semua.'}
+                        : 'Ubah kata kunci pencarian atau reset filter di atas.'}
                     </p>
                   </div>
                 </td>
@@ -432,6 +796,15 @@ export function InputBdPanel({
             ) : (
               filteredBdRecords.map((rec, idx) => {
                 const stStyle = BD_STATUS_STYLES[rec.status];
+                const durMin = calculateDurationMinutes(
+                  rec.tanggalBd,
+                  rec.jamBd,
+                  undefined,
+                  undefined,
+                  nowMs
+                );
+                const severity = getAgingSeverity(durMin);
+
                 return (
                   <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-2 pl-4 pr-2 font-mono tabular-nums text-slate-400">
@@ -448,13 +821,27 @@ export function InputBdPanel({
                         className="w-full px-1.5 py-1 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
                       />
                     </td>
+                    <td className="py-2 px-2 whitespace-nowrap">
+                      <span
+                        title={`BD sejak ${rec.tanggalBd} ${rec.jamBd}`}
+                        className={`inline-block px-1.5 py-0.5 text-[11px] font-mono tabular-nums rounded border ${
+                          severity === 'critical'
+                            ? 'bg-red-50 text-red-700 border-red-200 font-semibold'
+                            : severity === 'warning'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
+                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {formatDurationId(durMin)}
+                      </span>
+                    </td>
                     <td className="py-2 px-2">
                       <input
                         type="text"
                         list="bd-location-suggestions"
                         value={rec.lokasi ?? ''}
                         aria-label={`Posisi atau lokasi BD ${rec.unitCode}`}
-                        placeholder="Isi posisi / lokasi..."
+                        placeholder="Isi lokasi..."
                         onChange={(e) => onUpdateBd(rec.id, { lokasi: e.target.value })}
                         className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
                       />
@@ -464,6 +851,25 @@ export function InputBdPanel({
                         unitCode={rec.unitCode}
                         value={rec.mrNumbers ?? []}
                         onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="text"
+                        value={rec.picMekanik ?? ''}
+                        aria-label={`PIC Mekanik ${rec.unitCode}`}
+                        placeholder="PIC..."
+                        onChange={(e) => onUpdateBd(rec.id, { picMekanik: e.target.value })}
+                        className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <Time24Input
+                        value={rec.etr ?? ''}
+                        ariaLabel={`ETR ${rec.unitCode}`}
+                        placeholder="--:--"
+                        onChange={(val) => onUpdateBd(rec.id, { etr: val })}
+                        className="w-full px-1.5 py-1 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
                       />
                     </td>
                     <td className="py-2 px-2">

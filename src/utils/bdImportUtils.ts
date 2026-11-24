@@ -14,6 +14,8 @@ export interface ParsedBdImportRow {
   keterangan: string;
   status: BdStatus;
   rawStatus: string;
+  picMekanik?: string;
+  etr?: string;
 }
 
 export interface ParsedBdWorkbookResult {
@@ -136,7 +138,17 @@ export function parseExcelBdStatus(raw: unknown): BdStatus {
   return 'B0';
 }
 
-type ColumnKey = 'no' | 'unit' | 'jam' | 'tanggal' | 'lokasi' | 'mr' | 'keterangan' | 'status';
+type ColumnKey =
+  | 'no'
+  | 'unit'
+  | 'jam'
+  | 'tanggal'
+  | 'lokasi'
+  | 'mr'
+  | 'keterangan'
+  | 'status'
+  | 'pic'
+  | 'etr';
 
 function identifyHeaderKey(headerRaw: string): ColumnKey | null {
   const h = headerRaw.trim().toUpperCase().replace(/\s+/g, ' ');
@@ -188,6 +200,8 @@ function identifyHeaderKey(headerRaw: string): ColumnKey | null {
   ) {
     return 'keterangan';
   }
+  if (h.includes('PIC') || h.includes('MEKANIK')) return 'pic';
+  if (h === 'ETR' || h.includes('ESTIMASI')) return 'etr';
   if (h.includes('STATUS')) return 'status';
 
   return null;
@@ -250,6 +264,8 @@ function parseMatrixToBdRows(matrix: unknown[][]): {
     let mrRaw = '';
     let ketRaw = '';
     let statusRaw = '';
+    let picRaw = '';
+    let etrRaw: unknown = '';
 
     if (headerRowIdx >= 0) {
       unitRaw = colMap.unit !== undefined ? normalizeCellText(cells[colMap.unit]) : '';
@@ -259,6 +275,8 @@ function parseMatrixToBdRows(matrix: unknown[][]): {
       mrRaw = colMap.mr !== undefined ? normalizeCellText(cells[colMap.mr]) : '';
       ketRaw = colMap.keterangan !== undefined ? normalizeCellText(cells[colMap.keterangan]) : '';
       statusRaw = colMap.status !== undefined ? normalizeCellText(cells[colMap.status]) : '';
+      picRaw = colMap.pic !== undefined ? normalizeCellText(cells[colMap.pic]) : '';
+      etrRaw = colMap.etr !== undefined ? cells[colMap.etr] : '';
     } else {
       // Positional fallback when pasted without header row:
       // Detect if column 0 is a plain row number (1, 2, 3...) and column 1 is a unit code
@@ -319,6 +337,8 @@ function parseMatrixToBdRows(matrix: unknown[][]): {
     }
     seenUnits.add(unitCode);
 
+    const etrParsed = normalizeCellText(etrRaw) ? parseExcelTimeTo24h(etrRaw, '') : '';
+
     parsedRows.push({
       rowNumber: row.originalRowNumber,
       unitCode,
@@ -329,6 +349,8 @@ function parseMatrixToBdRows(matrix: unknown[][]): {
       keterangan: ketRaw,
       status: parseExcelBdStatus(statusRaw),
       rawStatus: statusRaw,
+      picMekanik: picRaw,
+      etr: etrParsed,
     });
   }
 
@@ -427,6 +449,8 @@ export function downloadBdExcelTemplate(): void {
       'TANGGAL BD',
       'POSISI / LOKASI BD',
       'NOMOR MR',
+      'PIC MEKANIK',
+      'ETR',
       'KETERANGAN',
       'STATUS',
     ],
@@ -437,6 +461,8 @@ export function downloadBdExcelTemplate(): void {
       today,
       'KM 12',
       'MR-24011, MR-24012',
+      'Budi / Shift 1',
+      '14:00',
       'Hose hidrolik dump bocor',
       'B0',
     ],
@@ -447,6 +473,8 @@ export function downloadBdExcelTemplate(): void {
       today,
       'Workshop IP',
       'MR-24015',
+      'Andi',
+      '16:30',
       'Waiting sparepart filter oli',
       'B1',
     ],
@@ -466,6 +494,8 @@ export function downloadBdExcelTemplate(): void {
     { wch: 14 },
     { wch: 22 },
     { wch: 24 },
+    { wch: 16 },
+    { wch: 8 },
     { wch: 32 },
     { wch: 12 },
   ];

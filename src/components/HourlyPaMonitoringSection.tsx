@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, RotateCcw } from 'lucide-react';
 import {
   BreakdownRecord,
@@ -17,6 +17,9 @@ interface HourlyPaMonitoringSectionProps {
   shiftDate: string;
   onChangeShiftDate: (date: string) => void;
   totalPopulasi: number;
+  targetPaPct?: number;
+  isOwnerOrAdmin?: boolean;
+  onUpdateTargetPa?: (nextTarget: number) => void;
   bdRecords: BreakdownRecord[];
   rfuHistory: RfuHistoryRecord[];
   overrides: Record<string, HourlySlotOverride>;
@@ -35,6 +38,9 @@ export function HourlyPaMonitoringSection({
   shiftDate,
   onChangeShiftDate,
   totalPopulasi,
+  targetPaPct = 90,
+  isOwnerOrAdmin = false,
+  onUpdateTargetPa,
   bdRecords,
   rfuHistory,
   overrides,
@@ -44,6 +50,13 @@ export function HourlyPaMonitoringSection({
   const [shiftFilter, setShiftFilter] = useState<ShiftFilter>('ALL');
   const [hoveredSlotIndex, setHoveredSlotIndex] = useState<number | null>(null);
   const [copiedHourlyWa, setCopiedHourlyWa] = useState(false);
+  const [targetInput, setTargetInput] = useState(String(targetPaPct));
+
+  useEffect(() => {
+    setTargetInput(String(targetPaPct));
+  }, [targetPaPct]);
+
+  const warnThreshold = Math.max(0, targetPaPct - 10);
 
   const allRows = useMemo(
     () =>
@@ -119,7 +132,7 @@ export function HourlyPaMonitoringSection({
   return (
     <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
       {/* Section Header */}
-      <div className="px-4 py-3.5 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-3.5 sm:px-4 py-3.5 border-b border-slate-200 bg-slate-50/70 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
             Kondisi PA Unit, Total Populasi &amp; BD Per Jam (06:00 Shift 1 – 06:00 Shift 2)
@@ -129,9 +142,9 @@ export function HourlyPaMonitoringSection({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs">
-            <label htmlFor="shift-date-picker" className="text-slate-500 font-medium">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+          <div className="col-span-2 sm:col-span-1 flex items-center justify-between sm:justify-start gap-2 text-xs">
+            <label htmlFor="shift-date-picker" className="text-slate-500 font-medium whitespace-nowrap">
               Tanggal Shift:
             </label>
             <input
@@ -141,24 +154,60 @@ export function HourlyPaMonitoringSection({
               onChange={(e) => {
                 if (e.target.value) onChangeShiftDate(e.target.value);
               }}
-              className="px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="flex-1 sm:flex-initial px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
+
+          {isOwnerOrAdmin && onUpdateTargetPa ? (
+            <div className="col-span-2 sm:col-span-1 flex items-center gap-1.5 text-xs bg-white border border-slate-200 rounded-md px-2 py-1">
+              <label htmlFor="target-pa-input" className="text-slate-500 font-medium whitespace-nowrap">
+                Target PA:
+              </label>
+              <input
+                id="target-pa-input"
+                type="number"
+                min={50}
+                max={100}
+                step={0.5}
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                className="w-14 px-1.5 py-0.5 text-xs font-mono tabular-nums bg-slate-50 border border-slate-200 rounded text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+              <span className="text-slate-500 font-mono">%</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = Number(targetInput);
+                  if (!Number.isFinite(val)) return;
+                  const clamped = Math.min(100, Math.max(50, Math.round(val * 10) / 10));
+                  setTargetInput(String(clamped));
+                  onUpdateTargetPa(clamped);
+                }}
+                className="px-2 py-1 text-[11px] font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded cursor-pointer whitespace-nowrap"
+              >
+                Simpan
+              </button>
+            </div>
+          ) : (
+            <div className="col-span-2 sm:col-span-1 inline-flex items-center px-2.5 py-1.5 text-xs font-mono font-medium text-slate-600 bg-white border border-slate-200 rounded-md whitespace-nowrap">
+              Target PA: {targetPaPct}%
+            </div>
+          )}
 
           <button
             type="button"
             onClick={handleCopyHourlyWa}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             {copiedHourlyWa ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
-                <span className="text-emerald-700">WA Per Jam Tersalin</span>
+                <span className="text-emerald-700">WA Tersalin</span>
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-                <span>Salin WA Per Jam</span>
+                <span>Salin WA Jam</span>
               </>
             )}
           </button>
@@ -166,10 +215,10 @@ export function HourlyPaMonitoringSection({
           <button
             type="button"
             onClick={() => exportHourlyMonitoringCsv(shiftDate, allRows)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+            className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-            <span>Export CSV Per Jam</span>
+            <span>CSV Per Jam</span>
           </button>
         </div>
       </div>
@@ -255,33 +304,38 @@ export function HourlyPaMonitoringSection({
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-[11px] text-slate-600 shrink-0">
+          <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 shrink-0">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-emerald-600 rounded-xs inline-block" />
-              <span>PA ≥ 90%</span>
+              <span>PA ≥ {targetPaPct}%</span>
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-amber-500 rounded-xs inline-block" />
-              <span>PA 80–89.9%</span>
+              <span>
+                PA {warnThreshold}–{(targetPaPct - 0.1).toFixed(1)}%
+              </span>
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-red-600 rounded-xs inline-block" />
-              <span>PA &lt; 80%</span>
+              <span>PA &lt; {warnThreshold}%</span>
             </span>
           </div>
         </div>
 
         {/* 25-Slot Bar Chart */}
-        <div className="relative pt-4 pb-1 overflow-x-auto">
+        <p className="md:hidden text-[11px] text-slate-400 mb-1">
+          Geser grafik ke samping &amp; ketuk batang jam untuk rincian →
+        </p>
+        <div className="relative pt-4 pb-1 overflow-x-auto ops-scroll">
           <div className="min-w-[760px]">
-            {/* 90% Target Guideline */}
+            {/* Target Guideline */}
             <div className="relative h-36 flex items-end gap-1 border-b border-slate-200 px-1">
               <div
                 className="absolute left-0 right-0 border-t border-dashed border-slate-300 pointer-events-none flex justify-end"
-                style={{ bottom: '90%' }}
+                style={{ bottom: `${targetPaPct}%` }}
               >
                 <span className="text-[10px] font-mono text-slate-400 bg-white px-1 -mt-2">
-                  Target 90%
+                  Target {targetPaPct}%
                 </span>
               </div>
 
@@ -290,9 +344,9 @@ export function HourlyPaMonitoringSection({
                 const heightPct = active ? Math.max(4, Math.min(100, row.paPct)) : 0;
                 const barColor = !active
                   ? 'bg-slate-100'
-                  : row.paPct >= 90
+                  : row.paPct >= targetPaPct
                   ? 'bg-emerald-600'
-                  : row.paPct >= 80
+                  : row.paPct >= warnThreshold
                   ? 'bg-amber-500'
                   : 'bg-red-600';
 
@@ -301,6 +355,7 @@ export function HourlyPaMonitoringSection({
                 return (
                   <div
                     key={row.key}
+                    onClick={() => setHoveredSlotIndex(row.slotIndex)}
                     onMouseEnter={() => setHoveredSlotIndex(row.slotIndex)}
                     onMouseLeave={() => setHoveredSlotIndex(null)}
                     className={`flex-1 h-full flex flex-col justify-end items-center relative group cursor-pointer ${
@@ -355,28 +410,30 @@ export function HourlyPaMonitoringSection({
       </div>
 
       {/* Shift Filter Toolbar */}
-      <div className="px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/40">
-        <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-md">
-          {(
-            [
-              { id: 'ALL', label: 'Semua 24 Jam (06:00–06:00)' },
-              { id: 'SHIFT_1', label: 'Shift 1 (06:00–18:00)' },
-              { id: 'SHIFT_2', label: 'Shift 2 (18:00–06:00)' },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setShiftFilter(tab.id)}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                shiftFilter === tab.id
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div className="px-3.5 sm:px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 bg-slate-50/40">
+        <div className="overflow-x-auto max-w-full">
+          <div className="inline-flex items-center gap-1 p-0.5 bg-slate-100 rounded-md">
+            {(
+              [
+                { id: 'ALL', label: 'Semua 24 Jam (06:00–06:00)' },
+                { id: 'SHIFT_1', label: 'Shift 1 (06:00–18:00)' },
+                { id: 'SHIFT_2', label: 'Shift 2 (18:00–06:00)' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setShiftFilter(tab.id)}
+                className={`min-h-[36px] md:min-h-0 px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  shiftFilter === tab.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <p className="text-[11px] text-slate-500">
@@ -385,8 +442,159 @@ export function HourlyPaMonitoringSection({
         </p>
       </div>
 
-      {/* Hourly Table */}
-      <div className="overflow-x-auto">
+      {/* Mobile Hourly Card View (< md) */}
+      <div className="md:hidden divide-y divide-slate-200">
+        {visibleRows.map((row) => {
+          const active = row.isElapsed || row.isManual;
+          const paColor = !active
+            ? 'text-slate-400'
+            : row.paPct >= targetPaPct
+            ? 'text-emerald-700'
+            : row.paPct >= warnThreshold
+            ? 'text-amber-700'
+            : 'text-red-700';
+
+          const barColor = !active
+            ? 'bg-slate-200'
+            : row.paPct >= targetPaPct
+            ? 'bg-emerald-600'
+            : row.paPct >= warnThreshold
+            ? 'bg-amber-500'
+            : 'bg-red-600';
+
+          return (
+            <div
+              key={row.key}
+              className={`p-3.5 space-y-2.5 ${
+                row.isCurrentHour ? 'bg-blue-50/40' : 'bg-white'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-mono font-bold tabular-nums text-slate-900">
+                    {row.hourLabel}
+                  </span>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-500">
+                    {formatReadableDateId(row.calendarDate).slice(0, 5)}
+                  </span>
+                  <span
+                    className={`text-[11px] font-medium truncate ${
+                      row.slotIndex === 12 || row.slotIndex === 24
+                        ? 'text-blue-700'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    {row.shiftLabel}
+                  </span>
+                  {row.isCurrentHour && (
+                    <span className="text-[10px] font-semibold text-blue-700">Aktif</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <span className={`text-sm font-mono font-bold tabular-nums ${paColor}`}>
+                    {active ? `${row.paPct.toFixed(1)}%` : '—'}
+                  </span>
+                  {row.isManual ? (
+                    <button
+                      type="button"
+                      onClick={() => onClearOverride(row.key)}
+                      className="min-h-[32px] px-2 inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                      <span>Reset</span>
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">
+                      {active ? 'Auto' : 'Nanti'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full h-1.5 bg-slate-100 rounded-xs overflow-hidden">
+                <div
+                  className={`h-full ${barColor}`}
+                  style={{ width: active ? `${Math.min(100, row.paPct)}%` : '0%' }}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-slate-500 mb-1">
+                    Populasi
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    aria-label={`Total populasi jam ${row.hourLabel}`}
+                    value={active ? row.totalPopulasi : ''}
+                    placeholder={String(totalPopulasi)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!Number.isFinite(val)) return;
+                      onSetOverride({
+                        shiftDate,
+                        slotIndex: row.slotIndex,
+                        totalPopulasi: Math.max(0, Math.floor(val)),
+                        bdCount: active ? row.bdCount : 0,
+                      });
+                    }}
+                    className="w-full min-h-[40px] px-2.5 py-1.5 text-sm font-mono tabular-nums bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-900 placeholder:text-slate-300"
+                  />
+                </div>
+
+                <div>
+                  <span className="block text-[10px] font-semibold uppercase text-slate-500 mb-1">
+                    Running
+                  </span>
+                  <div className="min-h-[40px] px-2.5 py-1.5 flex items-center text-sm font-mono tabular-nums font-semibold text-emerald-700 bg-slate-50/60 border border-slate-200/70 rounded">
+                    {active ? row.runningCount : '—'}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-slate-500 mb-1">
+                    Unit BD
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    aria-label={`Jumlah unit BD jam ${row.hourLabel}`}
+                    value={active ? row.bdCount : ''}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (!Number.isFinite(val)) return;
+                      onSetOverride({
+                        shiftDate,
+                        slotIndex: row.slotIndex,
+                        totalPopulasi: active ? row.totalPopulasi : totalPopulasi,
+                        bdCount: Math.max(0, Math.floor(val)),
+                      });
+                    }}
+                    className={`w-full min-h-[40px] px-2.5 py-1.5 text-sm font-mono tabular-nums font-semibold bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-600 rounded focus:outline-none placeholder:text-slate-300 ${
+                      active && row.bdCount > 0 ? 'text-red-700' : 'text-slate-700'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {active && row.bdUnitCodes.length > 0 && (
+                <p className="text-[11px] font-mono text-slate-600 leading-relaxed">
+                  <span className="font-sans text-slate-400">Unit BD:</span>{' '}
+                  {row.bdUnitCodes.join(', ')}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop Hourly Table (>= md) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs min-w-[820px]">
           <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
@@ -406,25 +614,25 @@ export function HourlyPaMonitoringSection({
               const active = row.isElapsed || row.isManual;
               const paColor = !active
                 ? 'text-slate-400'
-                : row.paPct >= 90
+                : row.paPct >= targetPaPct
                 ? 'text-emerald-700'
-                : row.paPct >= 80
+                : row.paPct >= warnThreshold
                 ? 'text-amber-700'
                 : 'text-red-700';
 
               const barColor = !active
                 ? 'bg-slate-200'
-                : row.paPct >= 90
+                : row.paPct >= targetPaPct
                 ? 'bg-emerald-600'
-                : row.paPct >= 80
+                : row.paPct >= warnThreshold
                 ? 'bg-amber-500'
                 : 'bg-red-600';
 
               const paLabel = !active
                 ? 'Menunggu'
-                : row.paPct >= 90
+                : row.paPct >= targetPaPct
                 ? 'Optimal'
-                : row.paPct >= 80
+                : row.paPct >= warnThreshold
                 ? 'Perhatian'
                 : 'Kritis';
 

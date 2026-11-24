@@ -16,7 +16,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { INITIAL_FLEET_UNITS } from '../data/initialUnits';
+import { INITIAL_FLEET_UNITS, normalizePartStatus } from '../data/initialUnits';
 import {
   BLUEPRINT_LIMITS,
   BOOTSTRAPPED_ADMIN_EMAIL,
@@ -29,6 +29,7 @@ import {
   sanitizeId,
 } from '../firebase';
 import {
+  AuditLogEntry,
   BreakdownRecord,
   FleetUnit,
   HourlySlotOverride,
@@ -64,6 +65,7 @@ export interface WorkspaceInfo {
 export interface BoardMetaState {
   rfuMonths: string[];
   hourlyMonths: string[];
+  targetPaPct: number;
 }
 
 export interface SyncActor {
@@ -100,6 +102,10 @@ export function cleanBreakdownRecord(rec: BreakdownRecord): BreakdownRecord {
     mrNumbers: normalizeMrList(rec.mrNumbers).slice(0, 30),
     keterangan: String(rec.keterangan ?? '').slice(0, 500),
     status: rec.status,
+    picMekanik: String(rec.picMekanik ?? '').slice(0, 80),
+    etr: String(rec.etr ?? '').slice(0, 10),
+    partStatus: normalizePartStatus(rec.partStatus),
+    partNote: String(rec.partNote ?? '').slice(0, 300),
     updatedAt: String(rec.updatedAt ?? new Date().toISOString()).slice(0, 40),
   };
 }
@@ -121,6 +127,7 @@ export function cleanRfuRecord(rec: RfuHistoryRecord): RfuHistoryRecord {
     detailSubKomponen: String(rec.detailSubKomponen ?? '').slice(0, 160),
     activityPerbaikan: String(rec.activityPerbaikan ?? '').slice(0, 500),
     lastStatus: rec.lastStatus,
+    picMekanik: String(rec.picMekanik ?? '').slice(0, 80),
   };
 }
 
@@ -347,8 +354,20 @@ export async function ensureInitialBoardDocs(
       await setDoc(metaRef, {
         rfuMonths: [currentMonth],
         hourlyMonths: [currentMonth],
+        targetPaPct: 90,
         updatedAt: serverTimestamp(),
         updatedByUid: actor.uid,
+      });
+    }
+
+    const auditRef = doc(db, 'workspaces', workspaceId, 'board', 'auditLog');
+    const auditSnap = await getDoc(auditRef);
+    if (!auditSnap.exists()) {
+      await setDoc(auditRef, {
+        entries: [],
+        updatedAt: serverTimestamp(),
+        updatedByUid: actor.uid,
+        updatedByName: actor.displayName,
       });
     }
   } catch (err) {
@@ -566,6 +585,22 @@ export async function removeWorkspaceMember(
   }
 }
 
+export async function updateWorkspaceMemberRole(
+  workspaceId: string,
+  memberUid: string,
+  role: 'admin' | 'operator'
+): Promise<void> {
+  const path = `workspaces/${workspaceId}/members/${memberUid}`;
+  try {
+    await updateDoc(doc(db, 'workspaces', workspaceId, 'members', memberUid), {
+      role,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
 export function subscribeBoardFleet(
   workspaceId: string,
   onData: (units: FleetUnit[], meta: { updatedByName?: string }) => void
@@ -624,6 +659,9 @@ export function subscribeBoardMeta(
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
+      const rawTarget = Number(data.targetPaPct);
+      const targetPaPct =
+        Number.isFinite(rawTarget) && rawTarget >= 50 && rawTarget <= 100 ? rawTarget : 90;
       onData({
         rfuMonths: Array.isArray(data.rfuMonths)
           ? data.rfuMonths.filter((m): m is string => typeof m === 'string')
@@ -631,12 +669,115 @@ export function subscribeBoardMeta(
         hourlyMonths: Array.isArray(data.hourlyMonths)
           ? data.hourlyMonths.filter((m): m is string => typeof m === 'string')
           : [],
+        targetPaPct,
       });
     },
     (error) => {
       handleFirestoreError(error, OperationType.GET, path);
     }
   );
+}
+
+export function cleanAuditLogEntry(entry: AuditLogEntry): AuditLogEntry {
+  return {
+    id: sanitizeId(entry.id || `log-${Date.now()}`),
+    timestamp: String(entry.timestamp ?? new Date().toISOString()).slice(0, 40),
+    actorUid: sanitizeId(entry.actorUid || 'unknown'),
+    actorName: String(entry.actorName ?? 'Anggota Tim').slice(0, 80),
+    actionType: entry.actionType,
+    summary: String(entry.summary ?? '').slice(0, 260),
+    unitCode: entry.unitCode ? String(entry.unitCode).trim().toUpperCase().slice(0, 40) : '',
+  };
+}
+
+export function subscribeBoardAuditLog(
+  workspaceId: string,
+  onData: (entries: AuditLogEntry[]) => void
+): Unsubscribe {
+  const path = `workspaces/${workspaceId}/board/auditLog`;
+  return onSnapshot(
+    doc(db, 'workspaces', workspaceId, 'board', 'auditLog'),
+    (snap) => {
+      if (!snap.exists()) {
+        onData([]);
+        return;
+      }
+      const rawEntries = Array.isArray(snap.data().entries)
+        ? (snap.data().entries as AuditLogEntry[])
+        : [];
+      const cleaned = rawEntries
+        .filter((e) => e && typeof e === 'object')
+        .map(cleanAuditLogEntry)
+        .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+      onData(cleaned);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+  );
+}
+
+export async function appendAuditLogCloud(
+  workspaceId: string,
+  entry: Omit<AuditLogEntry, 'id' | 'timestamp' | 'actorUid' | 'actorName'>,
+  user: User
+): Promise<void> {
+  const actor = toActor(user);
+  const auditPath = `workspaces/${workspaceId}/board/auditLog`;
+  const auditRef = doc(db, 'workspaces', workspaceId, 'board', 'auditLog');
+  const fullEntry = cleanAuditLogEntry({
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    actorUid: actor.uid,
+    actorName: actor.displayName,
+    actionType: entry.actionType,
+    summary: entry.summary,
+    unitCode: entry.unitCode,
+  });
+
+  try {
+    const snap = await getDoc(auditRef);
+    const existingEntries = snap.exists() && Array.isArray(snap.data().entries)
+      ? (snap.data().entries as AuditLogEntry[])
+      : [];
+    const nextEntries = [fullEntry, ...existingEntries].slice(0, 150);
+
+    if (!snap.exists()) {
+      await setDoc(auditRef, {
+        entries: nextEntries,
+        updatedAt: serverTimestamp(),
+        updatedByUid: actor.uid,
+        updatedByName: actor.displayName,
+      });
+    } else {
+      await updateDoc(auditRef, {
+        entries: nextEntries,
+        updatedAt: serverTimestamp(),
+        updatedByUid: actor.uid,
+        updatedByName: actor.displayName,
+      });
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, auditPath);
+  }
+}
+
+export async function updateTargetPaCloud(
+  workspaceId: string,
+  targetPaPct: number,
+  user: User
+): Promise<void> {
+  const clamped = Math.min(100, Math.max(50, Math.round(targetPaPct * 10) / 10));
+  const metaPath = `workspaces/${workspaceId}/board/meta`;
+  try {
+    await updateDoc(doc(db, 'workspaces', workspaceId, 'board', 'meta'), {
+      targetPaPct: clamped,
+      updatedAt: serverTimestamp(),
+      updatedByUid: user.uid,
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, metaPath);
+  }
 }
 
 export function subscribeRfuMonth(

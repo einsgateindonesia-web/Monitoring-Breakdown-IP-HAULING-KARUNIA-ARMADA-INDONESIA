@@ -172,15 +172,31 @@ service cloud.firestore {
 
     function isValidMetaDoc(data) {
       return data.keys().hasAll(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid'])
-        && data.keys().hasOnly(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid'])
+        && data.keys().hasOnly(['rfuMonths', 'hourlyMonths', 'targetPaPct', 'updatedAt', 'updatedByUid'])
         && data.rfuMonths is list
         && data.rfuMonths.size() <= 120
         && (data.rfuMonths.size() == 0 || data.rfuMonths[0] is string)
         && data.hourlyMonths is list
         && data.hourlyMonths.size() <= 120
         && (data.hourlyMonths.size() == 0 || data.hourlyMonths[0] is string)
+        && (!('targetPaPct' in data) || (data.targetPaPct is number && data.targetPaPct >= 50 && data.targetPaPct <= 100))
         && isValidId(data.updatedByUid)
         && data.updatedByUid == request.auth.uid
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAuditLogDoc(data) {
+      return data.keys().hasAll(['entries', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.keys().hasOnly(['entries', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.entries is list
+        && data.entries.size() <= 150
+        && (data.entries.size() == 0 || data.entries[0] is map)
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByName is string
+        && data.updatedByName.size() >= 1
+        && data.updatedByName.size() <= 80
         && data.updatedAt is timestamp
         && data.updatedAt == request.time;
     }
@@ -353,16 +369,12 @@ service cloud.firestore {
       match /board/fleet {
         allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
         allow list: if false;
-        allow create: if isSignedIn()
-          && isVerifiedEmail()
+        allow create: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidFleetDoc(incoming());
+        allow update: if isWorkspaceAdmin(workspaceId)
           && isValidId(workspaceId)
           && isValidFleetDoc(incoming())
-          && isWorkspaceMember(workspaceId);
-        allow update: if isSignedIn()
-          && isVerifiedEmail()
-          && isValidId(workspaceId)
-          && isValidFleetDoc(incoming())
-          && isWorkspaceMember(workspaceId)
           && incoming().diff(existing()).affectedKeys().hasOnly(['units', 'updatedAt', 'updatedByUid', 'updatedByName']);
         allow delete: if false;
       }
@@ -391,13 +403,32 @@ service cloud.firestore {
           && isVerifiedEmail()
           && isValidId(workspaceId)
           && isValidMetaDoc(incoming())
-          && isWorkspaceMember(workspaceId);
+          && isWorkspaceMember(workspaceId)
+          && (!('targetPaPct' in incoming()) || isWorkspaceAdmin(workspaceId));
         allow update: if isSignedIn()
           && isVerifiedEmail()
           && isValidId(workspaceId)
           && isValidMetaDoc(incoming())
           && isWorkspaceMember(workspaceId)
-          && incoming().diff(existing()).affectedKeys().hasOnly(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['rfuMonths', 'hourlyMonths', 'targetPaPct', 'updatedAt', 'updatedByUid'])
+          && (!incoming().diff(existing()).affectedKeys().hasAny(['targetPaPct']) || isWorkspaceAdmin(workspaceId));
+        allow delete: if false;
+      }
+
+      match /board/auditLog {
+        allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidAuditLogDoc(incoming())
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidAuditLogDoc(incoming())
+          && isWorkspaceMember(workspaceId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['entries', 'updatedAt', 'updatedByUid', 'updatedByName']);
         allow delete: if false;
       }
 
@@ -417,7 +448,8 @@ service cloud.firestore {
           && isValidRfuMonthDoc(incoming(), monthKey)
           && isWorkspaceMember(workspaceId)
           && incoming().monthKey == existing().monthKey
-          && incoming().diff(existing()).affectedKeys().hasOnly(['records', 'updatedAt', 'updatedByUid', 'updatedByName']);
+          && incoming().diff(existing()).affectedKeys().hasOnly(['records', 'updatedAt', 'updatedByUid', 'updatedByName'])
+          && (incoming().records.keys().hasAll(existing().records.keys()) || isWorkspaceAdmin(workspaceId));
         allow delete: if isWorkspaceAdmin(workspaceId) && isValidId(workspaceId) && isValidId(monthKey);
       }
 

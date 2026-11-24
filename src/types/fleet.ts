@@ -14,6 +14,14 @@ export type BdStatus =
   | 'B9'
   | 'B10';
 
+export type PartStatus =
+  | ''
+  | 'WAITING_PR_PO'
+  | 'ORDERED'
+  | 'IN_TRANSIT'
+  | 'READY_WAREHOUSE'
+  | 'INSTALLED';
+
 export interface FleetUnit {
   id: string;
   code: string;
@@ -31,6 +39,10 @@ export interface BreakdownRecord {
   mrNumbers: string[];
   keterangan: string;
   status: BdStatus;
+  picMekanik?: string;
+  etr?: string; // HH:mm estimasi ready
+  partStatus?: PartStatus;
+  partNote?: string;
   updatedAt: string;
 }
 
@@ -50,6 +62,7 @@ export interface RfuHistoryRecord {
   detailSubKomponen: string;
   activityPerbaikan: string;
   lastStatus: BdStatus;
+  picMekanik?: string;
 }
 
 export type ActiveTab = 'board' | 'dashboard' | 'riwayat';
@@ -79,3 +92,25 @@ export interface HourlyMonitoringRow {
   bdUnitCodes: string[];
 }
 
+export type AuditActionType =
+  | 'INPUT_BD'
+  | 'UPDATE_BD'
+  | 'MARK_RFU'
+  | 'CANCEL_BD'
+  | 'IMPORT_BD'
+  | 'UPDATE_PART'
+  | 'HOURLY_OVERRIDE'
+  | 'RFU_HISTORY'
+  | 'FLEET_MASTER'
+  | 'TARGET_PA'
+  | 'TEAM_ROLE';
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string; // ISO string
+  actorUid: string;
+  actorName: string;
+  actionType: AuditActionType;
+  summary: string;
+  unitCode?: string;
+}

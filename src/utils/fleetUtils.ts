@@ -1,4 +1,4 @@
-import { formatBdStatus } from '../data/initialUnits';
+import { formatBdStatus, PART_STATUS_LABELS } from '../data/initialUnits';
 import { BreakdownRecord, FleetUnit, RfuHistoryRecord } from '../types/fleet';
 
 export function getCurrentTimeHHMM(): string {
@@ -21,6 +21,57 @@ export function formatReadableDateId(yyyyMmDd: string): string {
   const parts = yyyyMmDd.split('-');
   if (parts.length !== 3) return yyyyMmDd;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+export function parseDateTimeToMs(dateStr?: string, timeStr?: string): number | null {
+  if (!dateStr) return null;
+  const parts = dateStr.trim().split('-').map(Number);
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+  const [y, m, d] = parts;
+  const timeParts = (timeStr || '00:00').trim().split(':').map(Number);
+  const hh = Number.isFinite(timeParts[0]) ? timeParts[0] : 0;
+  const mm = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
+  return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
+}
+
+export function calculateDurationMinutes(
+  startDate?: string,
+  startTime?: string,
+  endDate?: string,
+  endTime?: string,
+  nowMs: number = Date.now()
+): number | null {
+  const startMs = parseDateTimeToMs(startDate, startTime);
+  if (startMs === null) return null;
+  const endMs =
+    endDate && endTime
+      ? parseDateTimeToMs(endDate, endTime)
+      : endDate
+      ? parseDateTimeToMs(endDate, '23:59')
+      : nowMs;
+  if (endMs === null) return null;
+  const diffMin = Math.floor((endMs - startMs) / 60000);
+  return Math.max(0, diffMin);
+}
+
+export function formatDurationId(minutes: number | null): string {
+  if (minutes === null || !Number.isFinite(minutes) || minutes < 0) return '—';
+  if (minutes < 60) return `${minutes}m`;
+  const totalHours = Math.floor(minutes / 60);
+  const remMins = minutes % 60;
+  if (totalHours < 24) {
+    return remMins > 0 ? `${totalHours}j ${remMins}m` : `${totalHours}j`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  return remHours > 0 ? `${days}h ${remHours}j` : `${days}h`;
+}
+
+export function getAgingSeverity(minutes: number | null): 'normal' | 'warning' | 'critical' {
+  if (minutes === null) return 'normal';
+  if (minutes >= 12 * 60) return 'critical';
+  if (minutes >= 6 * 60) return 'warning';
+  return 'normal';
 }
 
 export function normalizeMrList(list?: string[] | null): string[] {
@@ -53,6 +104,7 @@ export function buildWhatsappReport(
   totalFleetCount: number
 ): string {
   const now = new Date();
+  const nowMs = now.getTime();
   const dateStr = now.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'short',
@@ -74,6 +126,14 @@ export function buildWhatsappReport(
   const pmvvRun = runningUnits.filter((u) => u.fleetGroup === 'PMVV').length;
   const pmvvBd = bdRecords.filter((b) => b.fleetGroup === 'PMVV').length;
 
+  const agingOver6h = bdRecords.filter((r) => {
+    const mins = calculateDurationMinutes(r.tanggalBd, r.jamBd, undefined, undefined, nowMs);
+    return mins !== null && mins >= 360;
+  }).length;
+  const waitingPartCount = bdRecords.filter(
+    (r) => r.status === 'B1' || normalizeMrList(r.mrNumbers).length > 0
+  ).length;
+
   const lines: string[] = [
     `*LAPORAN STATUS ARMADA & UNIT BD*`,
     `Tanggal: ${dateStr} | Pukul: ${timeStr}`,
@@ -81,7 +141,7 @@ export function buildWhatsappReport(
     `*RINGKASAN AREA DASHBOARD BD*`,
     `Total Armada : ${totalFleetCount} Unit`,
     `Unit Running : ${runningUnits.length} Unit (${paPct}%)`,
-    `Unit BD      : ${bdRecords.length} Unit`,
+    `Unit BD      : ${bdRecords.length} Unit (Aging ≥6j: ${agingOver6h} | Track Part/MR: ${waitingPartCount})`,
     `- PMSC: ${pmscRun}/${pmscTotal} Running (${pmscBd} BD)`,
     `- PMVV: ${pmvvRun}/${pmvvTotal} Running (${pmvvBd} BD)`,
     ``,
@@ -95,8 +155,58 @@ export function buildWhatsappReport(
       const lok = rec.lokasi?.trim() ? rec.lokasi.trim() : '-';
       const mrText = formatMrNumbers(rec.mrNumbers, '-');
       const ket = rec.keterangan.trim() ? rec.keterangan.trim() : '-';
+      const durMin = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
+      const durText = formatDurationId(durMin);
+      const extras: string[] = [`Dur: ${durText}`];
+      if (rec.picMekanik?.trim()) extras.push(`PIC: ${rec.picMekanik.trim()}`);
+      if (rec.etr?.trim()) extras.push(`ETR: ${rec.etr.trim()}`);
+      if (rec.partStatus) extras.push(`Part: ${PART_STATUS_LABELS[rec.partStatus]}`);
+
       lines.push(
-        `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} | Posisi: ${lok} | MR: ${mrText} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
+        `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} (${extras.join(' · ')}) | Posisi: ${lok} | MR: ${mrText} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
+      );
+    });
+  }
+
+  return lines.join('\n');
+}
+
+export function buildSparepartWhatsappReport(bdRecords: BreakdownRecord[]): string {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const dateStr = now.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const timeStr = getCurrentTimeHHMM();
+
+  const partUnits = bdRecords.filter(
+    (rec) =>
+      rec.status === 'B1' ||
+      normalizeMrList(rec.mrNumbers).length > 0 ||
+      Boolean(rec.partStatus) ||
+      Boolean(rec.partNote?.trim())
+  );
+
+  const lines: string[] = [
+    `*TRACKING SPAREPART & NOMOR MR*`,
+    `Tanggal: ${dateStr} | Pukul: ${timeStr}`,
+    `Total Unit Terkait Part/MR: ${partUnits.length} Unit`,
+    ``,
+  ];
+
+  if (partUnits.length === 0) {
+    lines.push('Tidak ada unit BD dengan waiting part atau nomor MR aktif.');
+  } else {
+    partUnits.forEach((rec, idx) => {
+      const mrText = formatMrNumbers(rec.mrNumbers, 'BELUM ADA MR');
+      const partLabel = PART_STATUS_LABELS[rec.partStatus ?? ''] || 'Belum Diatur';
+      const durMin = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
+      const durText = formatDurationId(durMin);
+      const note = rec.partNote?.trim() ? ` | Catatan: ${rec.partNote.trim()}` : '';
+      lines.push(
+        `${idx + 1}. ${rec.unitCode} (${rec.status}, Aging ${durText}) | MR: ${mrText} | Status Part: ${partLabel}${note} | Problem: ${rec.keterangan || '-'}`
       );
     });
   }
@@ -113,6 +223,7 @@ function escapeCsvCell(val: string | number): string {
 }
 
 export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRecord[]): void {
+  const nowMs = Date.now();
   const maxRows = Math.max(runningUnits.length, bdRecords.length, 1);
   const headers = [
     'NO',
@@ -122,8 +233,13 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
     'UNIT BD',
     'JAM BD',
     'TANGGAL BD',
+    'DURASI BD',
     'POSISI / LOKASI BD',
     'NOMOR MR',
+    'PIC MEKANIK',
+    'ETR',
+    'STATUS PART',
+    'CATATAN PART',
     'KETERANGAN',
     'STATUS',
   ];
@@ -133,6 +249,12 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
   for (let i = 0; i < maxRows; i++) {
     const run = runningUnits[i];
     const bd = bdRecords[i];
+    const durStr = bd
+      ? formatDurationId(
+          calculateDurationMinutes(bd.tanggalBd, bd.jamBd, undefined, undefined, nowMs)
+        )
+      : '';
+
     rows.push(
       [
         run ? i + 1 : '',
@@ -142,8 +264,13 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
         bd ? bd.unitCode : '',
         bd ? bd.jamBd : '',
         bd ? bd.tanggalBd : '',
+        durStr,
         bd ? bd.lokasi ?? '' : '',
         bd ? formatMrNumbers(bd.mrNumbers, '') : '',
+        bd ? bd.picMekanik ?? '' : '',
+        bd ? bd.etr ?? '' : '',
+        bd && bd.partStatus ? PART_STATUS_LABELS[bd.partStatus] : '',
+        bd ? bd.partNote ?? '' : '',
         bd ? bd.keterangan : '',
         bd ? formatBdStatus(bd.status) : '',
       ]
@@ -171,8 +298,10 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
     'JAM BD',
     'TANGGAL RFU',
     'JAM RFU',
+    'DURASI PERBAIKAN',
     'POSISI / LOKASI BD',
     'NOMOR MR',
+    'PIC MEKANIK',
     'KETERANGAN PROBLEM',
     'KOMPONEN',
     'SUB KOMPONEN',
@@ -183,6 +312,9 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
 
   const rows: string[] = [headers.map(escapeCsvCell).join(',')];
   history.forEach((h, idx) => {
+    const durText = formatDurationId(
+      calculateDurationMinutes(h.tanggalBd, h.jamBd, h.tanggalRfu, h.jamRfu)
+    );
     rows.push(
       [
         idx + 1,
@@ -192,8 +324,10 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
         h.jamBd,
         h.tanggalRfu,
         h.jamRfu,
+        durText,
         h.lokasi ?? '',
         formatMrNumbers(h.mrNumbers, ''),
+        h.picMekanik ?? '',
         h.keterangan,
         h.komponen ?? '',
         h.subKomponen ?? '',
@@ -289,4 +423,3 @@ export function exportPopulationCsv(masterUnits: FleetUnit[]): void {
   a.click();
   URL.revokeObjectURL(url);
 }
-

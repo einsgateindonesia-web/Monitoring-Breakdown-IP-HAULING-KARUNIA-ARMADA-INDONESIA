@@ -131,9 +131,9 @@ export function StackedMrEditor({
         <button
           type="button"
           onClick={handleAddRow}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded cursor-pointer whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] md:min-h-0 md:px-2 md:py-1 text-xs md:text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded cursor-pointer whitespace-nowrap shrink-0"
         >
-          <Plus className="w-3 h-3" aria-hidden="true" />
+          <Plus className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
           <span>Tambah MR</span>
         </button>
         <span className="text-[10px] text-slate-400">
@@ -200,21 +200,21 @@ export function CompactMrInput({
           setDraft(formatted);
         }}
         placeholder={placeholder}
-        className="w-full min-w-0 px-2.5 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-md text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+        className="w-full min-w-0 px-2.5 py-2 md:py-1.5 text-sm md:text-xs font-mono bg-white border border-slate-300 rounded-md text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
       />
       <button
         type="button"
         onClick={() => setPopoverOpen((prev) => !prev)}
         title="Tambah / kelola beberapa Nomor MR"
         aria-label="Kelola daftar Nomor MR"
-        className="inline-flex items-center gap-0.5 px-2 py-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+        className="inline-flex items-center gap-0.5 px-2.5 py-2 md:py-1.5 min-h-[40px] md:min-h-0 text-xs md:text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
       >
-        <Plus className="w-3 h-3" aria-hidden="true" />
+        <Plus className="w-3.5 h-3.5 md:w-3 md:h-3" aria-hidden="true" />
         <span>MR</span>
       </button>
 
       {popoverOpen && (
-        <div className="absolute right-0 top-full mt-1 z-30 w-72 bg-white border border-slate-200 rounded-lg shadow-lg p-3 space-y-2">
+        <div className="absolute right-0 top-full mt-1 z-30 w-[min(18rem,calc(100vw-2.5rem))] bg-white border border-slate-200 rounded-lg shadow-lg p-3 space-y-2">
           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
             <span className="text-[11px] font-semibold text-slate-800">
               Daftar Nomor MR ({value.length})
@@ -222,7 +222,7 @@ export function CompactMrInput({
             <button
               type="button"
               onClick={() => setPopoverOpen(false)}
-              className="text-[11px] font-medium text-blue-700 hover:underline cursor-pointer"
+              className="text-xs md:text-[11px] font-medium text-blue-700 hover:underline cursor-pointer px-1 py-0.5"
             >
               Selesai
             </button>
@@ -285,7 +285,7 @@ export function InlineTableMrCell({ unitCode, value, onChange }: InlineTableMrCe
             ? `${normalized.join(', ')} (klik untuk ubah / tambah MR)`
             : 'Klik untuk isi atau tambah Nomor MR'
         }
-        className="w-full text-left px-2 py-1 text-xs rounded border border-transparent hover:border-slate-200 hover:bg-white focus:outline-none focus:border-blue-600 flex items-center justify-between gap-1.5 cursor-pointer group"
+        className="w-full text-left px-2.5 py-2 md:px-2 md:py-1 min-h-[40px] md:min-h-0 text-sm md:text-xs rounded border border-slate-200 md:border-transparent hover:border-slate-200 bg-white md:bg-transparent hover:bg-white focus:outline-none focus:border-blue-600 flex items-center justify-between gap-1.5 cursor-pointer group"
       >
         <span
           className={`truncate font-mono tabular-nums ${
@@ -294,13 +294,13 @@ export function InlineTableMrCell({ unitCode, value, onChange }: InlineTableMrCe
         >
           {normalized.length > 0 ? normalized.join(', ') : 'Isi / + MR...'}
         </span>
-        <span className="text-[10px] font-semibold text-blue-700 opacity-70 group-hover:opacity-100 whitespace-nowrap shrink-0">
+        <span className="text-xs md:text-[10px] font-semibold text-blue-700 opacity-85 md:opacity-70 group-hover:opacity-100 whitespace-nowrap shrink-0">
           + MR
         </span>
       </button>
 
       {editing && (
-        <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-white border border-slate-200 rounded-lg shadow-lg p-3 space-y-2">
+        <div className="absolute left-0 top-full mt-1 z-30 w-full sm:w-72 min-w-[240px] max-w-[calc(100vw-2.5rem)] bg-white border border-slate-200 rounded-lg shadow-lg p-3 space-y-2">
           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
             <span className="text-[11px] font-semibold text-slate-800 font-mono">
               MR — {unitCode} ({normalized.length})
@@ -308,7 +308,7 @@ export function InlineTableMrCell({ unitCode, value, onChange }: InlineTableMrCe
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="text-[11px] font-medium text-blue-700 hover:underline cursor-pointer"
+              className="text-xs md:text-[11px] font-medium text-blue-700 hover:underline cursor-pointer px-1 py-0.5"
             >
               Tutup
             </button>

@@ -11,15 +11,29 @@
     font-family: var(--font-sans);
     background-color: #F8FAFC;
     color: #0F172A;
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
   }
+
+  /* Prevent iOS Safari auto-zoom when focusing inputs/selects/textareas on mobile */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Subtle operational scrollbar for high-density data tables */

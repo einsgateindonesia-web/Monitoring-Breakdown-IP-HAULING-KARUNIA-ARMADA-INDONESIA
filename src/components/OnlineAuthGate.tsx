@@ -82,7 +82,7 @@ export function OnlineAuthGate({
                 <div className="p-3 rounded-md bg-red-50 border border-red-200 text-xs text-red-900 space-y-2">
                   <p className="font-medium leading-relaxed">{errorMessage}</p>
                   {errorCode && (
-                    <p className="font-mono text-[11px] text-red-700">
+                    <p className="font-mono text-[11px] text-red-700 break-all">
                       Kode: {errorCode}
                     </p>
                   )}
@@ -95,7 +95,7 @@ export function OnlineAuthGate({
                         href={currentUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-800 bg-white border border-blue-300 hover:bg-blue-50 rounded cursor-pointer"
+                        className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-800 bg-white border border-blue-300 hover:bg-blue-50 rounded cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                         <span>Buka Aplikasi di Tab Baru</span>
@@ -108,7 +108,7 @@ export function OnlineAuthGate({
                 type="button"
                 disabled={loading}
                 onClick={() => void onSignInGoogle()}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-md transition-colors cursor-pointer whitespace-nowrap"
+                className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-md transition-colors cursor-pointer whitespace-nowrap"
               >
                 <LogIn className="w-4 h-4" aria-hidden="true" />
                 <span>{loading ? 'Membuka Login Google...' : 'Masuk dengan Akun Google'}</span>

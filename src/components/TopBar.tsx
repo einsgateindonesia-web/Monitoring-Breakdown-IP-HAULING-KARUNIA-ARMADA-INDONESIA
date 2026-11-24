@@ -18,19 +18,19 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-8">
+      <div className="max-w-[1440px] mx-auto px-3 sm:px-6 h-12 md:h-14 flex items-center justify-between gap-3 md:gap-8">
         {/* Zone 1: Single text element wordmark */}
         <button
           type="button"
           onClick={() => onChangeTab('board')}
           title="Monitoring Breakdown IP HAULING KARUNIA ARMADA INDONESIA"
-          className="text-sm lg:text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 truncate max-w-[210px] sm:max-w-[340px] lg:max-w-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded"
+          className="text-xs sm:text-sm lg:text-base font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 truncate max-w-[205px] sm:max-w-[340px] lg:max-w-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded"
         >
           Monitoring Breakdown IP HAULING KARUNIA ARMADA INDONESIA
         </button>
 
-        {/* Zone 2: Clean single-line navigation links */}
-        <nav className="flex items-center gap-6 text-sm font-medium overflow-x-auto">
+        {/* Zone 2: Clean single-line navigation links (Desktop/Tablet md+; mobile uses Bottom Tab Bar) */}
+        <nav className="hidden md:flex items-center gap-6 text-sm font-medium overflow-x-auto">
           <button
             type="button"
             onClick={() => onChangeTab('board')}
@@ -71,7 +71,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onOpenInputModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-1.5 px-3 md:px-4 py-1.5 md:py-2 min-h-[36px] md:min-h-0 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
           >
             <Plus className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Input BD Unit</span>

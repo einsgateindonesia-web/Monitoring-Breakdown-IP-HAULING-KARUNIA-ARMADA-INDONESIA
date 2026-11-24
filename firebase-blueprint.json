@@ -223,7 +223,7 @@
     },
     "WorkspaceMetaDoc": {
       "title": "WorkspaceMetaDoc",
-      "description": "Index of active monthly RFU and hourly monitoring shard keys.",
+      "description": "Index of active monthly RFU/hourly monitoring shard keys and dynamic Target PA percentage.",
       "type": "object",
       "properties": {
         "rfuMonths": {
@@ -233,6 +233,11 @@
         "hourlyMonths": {
           "type": "array",
           "description": "Bounded list of YYYY-MM keys (max 120)."
+        },
+        "targetPaPct": {
+          "type": "number",
+          "minimum": 50,
+          "maximum": 100
         },
         "updatedAt": {
           "type": "string",
@@ -245,6 +250,31 @@
         }
       },
       "required": ["rfuMonths", "hourlyMonths", "updatedAt", "updatedByUid"]
+    },
+    "WorkspaceAuditLogDoc": {
+      "title": "WorkspaceAuditLogDoc",
+      "description": "Bounded team operational audit log (max 150 latest events).",
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "description": "Bounded list of AuditLogEntry objects (max 150)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["entries", "updatedAt", "updatedByUid", "updatedByName"]
     },
     "WorkspaceRfuMonthDoc": {
       "title": "WorkspaceRfuMonthDoc",
@@ -342,7 +372,11 @@
     },
     "/workspaces/{workspaceId}/board/meta": {
       "schema": { "$ref": "#/entities/WorkspaceMetaDoc" },
-      "description": "Active month keys index for RFU and hourly monitoring."
+      "description": "Active month keys index and dynamic target PA configuration."
+    },
+    "/workspaces/{workspaceId}/board/auditLog": {
+      "schema": { "$ref": "#/entities/WorkspaceAuditLogDoc" },
+      "description": "Bounded real-time team activity audit log."
     },
     "/workspaces/{workspaceId}/rfuMonths/{monthKey}": {
       "schema": { "$ref": "#/entities/WorkspaceRfuMonthDoc" },

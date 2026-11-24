@@ -18,6 +18,8 @@ interface InputBdModalProps {
     mrNumbers: string[];
     keterangan: string;
     status: BdStatus;
+    picMekanik?: string;
+    etr?: string;
   }) => { ok: boolean; message?: string };
 }
 
@@ -34,6 +36,8 @@ export function InputBdModal({
   const [mrNumbers, setMrNumbers] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
+  const [picMekanik, setPicMekanik] = useState('');
+  const [etr, setEtr] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -44,6 +48,8 @@ export function InputBdModal({
       setMrNumbers([]);
       setKeterangan('');
       setStatus('B0');
+      setPicMekanik('');
+      setEtr('');
       setError('');
     }
   }, [isOpen, initialUnitCode, runningUnits]);
@@ -59,6 +65,8 @@ export function InputBdModal({
       mrNumbers,
       keterangan,
       status,
+      picMekanik,
+      etr,
     });
     if (!res.ok) {
       setError(res.message ?? 'Gagal memindahkan unit ke BD.');
@@ -69,13 +77,13 @@ export function InputBdModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-input-bd-title"
     >
-      <div className="w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-t-2xl sm:rounded-lg shadow-lg overflow-hidden max-h-[92vh] sm:max-h-[90vh] flex flex-col">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-2">
           <div>
             <h2 id="modal-input-bd-title" className="text-sm font-semibold text-slate-900">
               Input BD Unit
@@ -88,13 +96,13 @@ export function InputBdModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup modal"
-            className="p-1 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center text-slate-400 hover:text-slate-700 rounded cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleFormSubmit} className="p-5 space-y-4 overflow-y-auto ops-scroll">
+        <form onSubmit={handleFormSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto ops-scroll">
           <datalist id="modal-bd-location-suggestions">
             {BD_LOCATION_SUGGESTIONS.map((loc) => (
               <option key={loc} value={loc} />
@@ -184,9 +192,43 @@ export function InputBdModal({
               value={lokasi}
               onChange={(e) => setLokasi(e.target.value)}
               placeholder="Contoh: KM 12 Hauling Road, Pit / Front Loading, Workshop IP..."
-              autoFocus
               className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="modal-pic-bd"
+                className="block text-xs font-semibold text-slate-700 mb-1"
+              >
+                PIC MEKANIK (Opsional)
+              </label>
+              <input
+                id="modal-pic-bd"
+                type="text"
+                value={picMekanik}
+                onChange={(e) => setPicMekanik(e.target.value)}
+                placeholder="Nama mekanik / leader..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="modal-etr-bd"
+                className="block text-xs font-semibold text-slate-700 mb-1"
+              >
+                ESTIMASI READY / ETR (24:00)
+              </label>
+              <Time24Input
+                id="modal-etr-bd"
+                value={etr}
+                onChange={setEtr}
+                placeholder="HH:mm"
+                className="w-full px-3 py-2 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
           </div>
 
           <div>
@@ -222,18 +264,18 @@ export function InputBdModal({
 
           {error && <p className="text-xs font-medium text-red-600">{error}</p>}
 
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 pb-safe">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
+              className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={runningUnits.length === 0}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer"
+              className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md cursor-pointer"
             >
               Pindahkan ke Unit BD
             </button>

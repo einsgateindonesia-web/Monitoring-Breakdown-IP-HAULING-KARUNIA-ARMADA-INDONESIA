@@ -23,6 +23,7 @@ interface TeamManagementModalProps {
   membership: WorkspaceMemberInfo | null;
   isOwnerOrAdmin: boolean;
   currentUserUid: string;
+  ownerUid?: string;
   hasLocalMigrationData: boolean;
   localSummaryText: string;
   onClose: () => void;
@@ -32,6 +33,7 @@ interface TeamManagementModalProps {
   }>;
   onCreateInviteCode: () => Promise<WorkspaceInviteInfo | null>;
   onToggleInviteActive: (code: string, active: boolean) => Promise<void>;
+  onUpdateMemberRole?: (memberUid: string, nextRole: 'admin' | 'operator') => Promise<void>;
   onRemoveMember: (memberUid: string) => Promise<void>;
   onMigrateLocalToCloud: () => Promise<void>;
 }
@@ -42,12 +44,14 @@ export function TeamManagementModal({
   membership,
   isOwnerOrAdmin,
   currentUserUid,
+  ownerUid,
   hasLocalMigrationData,
   localSummaryText,
   onClose,
   onLoadTeamDetails,
   onCreateInviteCode,
   onToggleInviteActive,
+  onUpdateMemberRole,
   onRemoveMember,
   onMigrateLocalToCloud,
 }: TeamManagementModalProps) {
@@ -123,9 +127,28 @@ export function TeamManagementModal({
 
   const handleDeleteMember = async (memberUid: string) => {
     setBusyAction(`remove-${memberUid}`);
+    setErrorMsg(null);
     try {
       await onRemoveMember(memberUid);
       setMembers((prev) => prev.filter((m) => m.uid !== memberUid));
+    } catch {
+      setErrorMsg('Gagal mencabut akses anggota tim.');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleChangeRole = async (memberUid: string, nextRole: 'admin' | 'operator') => {
+    if (!onUpdateMemberRole) return;
+    setBusyAction(`role-${memberUid}`);
+    setErrorMsg(null);
+    try {
+      await onUpdateMemberRole(memberUid, nextRole);
+      setMembers((prev) =>
+        prev.map((m) => (m.uid === memberUid ? { ...m, role: nextRole } : m))
+      );
+    } catch {
+      setErrorMsg('Gagal mengubah peran anggota tim.');
     } finally {
       setBusyAction(null);
     }
@@ -142,13 +165,13 @@ export function TeamManagementModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="team-modal-title"
     >
-      <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+      <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-t-2xl sm:rounded-lg shadow-xl overflow-hidden max-h-[92vh] sm:max-h-[90vh] flex flex-col">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <Users className="w-4 h-4 text-blue-700 shrink-0" aria-hidden="true" />
             <h2 id="team-modal-title" className="text-sm font-bold text-slate-900 truncate">
@@ -159,13 +182,13 @@ export function TeamManagementModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="p-1 text-slate-500 hover:text-slate-800 rounded cursor-pointer"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center text-slate-500 hover:text-slate-800 rounded cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto ops-scroll">
+        <div className="p-4 sm:p-5 space-y-5 overflow-y-auto ops-scroll">
           {/* Workspace & Current User Summary */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs">
             <div>
@@ -211,17 +234,17 @@ export function TeamManagementModal({
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">
                     Link Masuk Otomatis (rekan kerja tinggal buka link &amp; login Google)
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <input
                       type="text"
                       readOnly
                       value={inviteLink}
-                      className="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-slate-700"
+                      className="w-full sm:flex-1 min-w-0 text-xs font-mono bg-slate-50 border border-slate-300 rounded px-2.5 py-2 sm:py-1.5 text-slate-700"
                     />
                     <button
                       type="button"
                       onClick={() => void handleCopy(inviteLink, 'link')}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded cursor-pointer whitespace-nowrap shrink-0"
+                      className="w-full sm:w-auto min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded cursor-pointer whitespace-nowrap shrink-0"
                     >
                       {copiedKey === 'link' ? (
                         <Check className="w-3.5 h-3.5" />
@@ -241,7 +264,7 @@ export function TeamManagementModal({
                   <button
                     type="button"
                     onClick={() => void handleCopy(shareCode, 'code')}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded cursor-pointer whitespace-nowrap shrink-0"
+                    className="min-h-[36px] sm:min-h-0 inline-flex items-center gap-1 px-3 py-1.5 sm:py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded cursor-pointer whitespace-nowrap shrink-0"
                   >
                     {copiedKey === 'code' ? (
                       <Check className="w-3.5 h-3.5 text-emerald-600" />
@@ -307,7 +330,7 @@ export function TeamManagementModal({
                     <span>Muat Ulang</span>
                   </button>
                 </div>
-                <div className="border border-slate-200 rounded-md overflow-hidden">
+                <div className="border border-slate-200 rounded-md overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                       <tr>
@@ -326,22 +349,22 @@ export function TeamManagementModal({
                       ) : (
                         invites.map((inv) => (
                           <tr key={inv.code}>
-                            <td className="px-3 py-2 font-mono font-semibold text-slate-900">
+                            <td className="px-3 py-2.5 font-mono font-semibold text-slate-900">
                               {inv.code}
                             </td>
-                            <td className="px-3 py-2 text-slate-700">
+                            <td className="px-3 py-2.5 text-slate-700">
                               {inv.active ? (
                                 <span className="text-emerald-700 font-medium">Aktif</span>
                               ) : (
                                 <span className="text-slate-400">Nonaktif</span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2.5 text-right">
                               <button
                                 type="button"
                                 disabled={busyAction === `toggle-${inv.code}`}
                                 onClick={() => void handleToggleInvite(inv.code, !inv.active)}
-                                className="text-xs font-medium text-blue-700 hover:underline cursor-pointer"
+                                className="text-xs font-medium text-blue-700 hover:underline cursor-pointer py-1"
                               >
                                 {inv.active ? 'Nonaktifkan' : 'Aktifkan'}
                               </button>
@@ -359,7 +382,7 @@ export function TeamManagementModal({
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide mb-2">
                   Anggota Tim Terdaftar ({members.length})
                 </h3>
-                <div className="border border-slate-200 rounded-md overflow-hidden">
+                <div className="border border-slate-200 rounded-md overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                       <tr>
@@ -376,32 +399,61 @@ export function TeamManagementModal({
                           </td>
                         </tr>
                       ) : (
-                        members.map((m) => (
-                          <tr key={m.uid}>
-                            <td className="px-3 py-2 font-medium text-slate-900">
-                              {m.displayName}
-                              {m.uid === currentUserUid && (
-                                <span className="ml-1.5 text-[11px] text-slate-500">(Anda)</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700 capitalize">{m.role}</td>
-                            <td className="px-3 py-2 text-right">
-                              {m.uid !== currentUserUid ? (
-                                <button
-                                  type="button"
-                                  disabled={busyAction === `remove-${m.uid}`}
-                                  onClick={() => void handleDeleteMember(m.uid)}
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:underline cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                  <span>Keluarkan</span>
-                                </button>
-                              ) : (
-                                <span className="text-[11px] text-slate-400">Owner</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
+                        members.map((m) => {
+                          const effectiveOwner = ownerUid || workspace?.ownerUid;
+                          const isTargetOwner = Boolean(effectiveOwner && m.uid === effectiveOwner);
+                          const canManageTarget = m.uid !== currentUserUid && !isTargetOwner;
+                          return (
+                            <tr key={m.uid}>
+                              <td className="px-3 py-2.5 font-medium text-slate-900">
+                                {m.displayName}
+                                {m.uid === currentUserUid && (
+                                  <span className="ml-1.5 text-[11px] text-slate-500">(Anda)</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-slate-700">
+                                {canManageTarget && onUpdateMemberRole ? (
+                                  <select
+                                    aria-label={`Peran ${m.displayName}`}
+                                    value={m.role}
+                                    disabled={busyAction === `role-${m.uid}`}
+                                    onChange={(e) =>
+                                      void handleChangeRole(
+                                        m.uid,
+                                        e.target.value as 'admin' | 'operator'
+                                      )
+                                    }
+                                    className="px-2 py-1 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer"
+                                  >
+                                    <option value="operator">Operator</option>
+                                    <option value="admin">Admin</option>
+                                  </select>
+                                ) : (
+                                  <span className="capitalize">
+                                    {m.role === 'admin' ? 'Admin' : 'Operator'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                {canManageTarget ? (
+                                  <button
+                                    type="button"
+                                    disabled={busyAction === `remove-${m.uid}`}
+                                    onClick={() => void handleDeleteMember(m.uid)}
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-red-700 hover:underline cursor-pointer py-1"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                    <span>Keluarkan</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400">
+                                    {isTargetOwner ? 'Owner' : 'Anda'}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -411,11 +463,11 @@ export function TeamManagementModal({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end pb-safe">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-md cursor-pointer"
+            className="w-full sm:w-auto min-h-[42px] sm:min-h-0 px-4 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-md cursor-pointer"
           >
             Tutup
           </button>
