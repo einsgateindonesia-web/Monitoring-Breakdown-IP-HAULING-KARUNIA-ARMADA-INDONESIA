@@ -23,6 +23,30 @@ export function formatReadableDateId(yyyyMmDd: string): string {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
+export function normalizeMrList(list?: string[] | null): string[] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of list) {
+    const clean = String(item ?? '').trim().toUpperCase();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    result.push(clean);
+  }
+  return result;
+}
+
+export function parseMrInput(raw: string): string[] {
+  if (!raw) return [];
+  const parts = raw.split(/[,;\r\n]+/);
+  return normalizeMrList(parts);
+}
+
+export function formatMrNumbers(mrNumbers?: string[] | null, emptyFallback = '-'): string {
+  const normalized = normalizeMrList(mrNumbers);
+  return normalized.length > 0 ? normalized.join(', ') : emptyFallback;
+}
+
 export function buildWhatsappReport(
   runningUnits: FleetUnit[],
   bdRecords: BreakdownRecord[],
@@ -69,9 +93,10 @@ export function buildWhatsappReport(
   } else {
     bdRecords.forEach((rec, idx) => {
       const lok = rec.lokasi?.trim() ? rec.lokasi.trim() : '-';
+      const mrText = formatMrNumbers(rec.mrNumbers, '-');
       const ket = rec.keterangan.trim() ? rec.keterangan.trim() : '-';
       lines.push(
-        `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} | Posisi: ${lok} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
+        `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} | Posisi: ${lok} | MR: ${mrText} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
       );
     });
   }
@@ -98,6 +123,7 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
     'JAM BD',
     'TANGGAL BD',
     'POSISI / LOKASI BD',
+    'NOMOR MR',
     'KETERANGAN',
     'STATUS',
   ];
@@ -117,6 +143,7 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
         bd ? bd.jamBd : '',
         bd ? bd.tanggalBd : '',
         bd ? bd.lokasi ?? '' : '',
+        bd ? formatMrNumbers(bd.mrNumbers, '') : '',
         bd ? bd.keterangan : '',
         bd ? formatBdStatus(bd.status) : '',
       ]
@@ -144,8 +171,13 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
     'JAM BD',
     'TANGGAL RFU',
     'JAM RFU',
-    'LOKASI',
-    'KETERANGAN',
+    'POSISI / LOKASI BD',
+    'NOMOR MR',
+    'KETERANGAN PROBLEM',
+    'KOMPONEN',
+    'SUB KOMPONEN',
+    'DETAIL SUB KOMPONEN',
+    'ACTIVITY PERBAIKAN',
     'STATUS TERAKHIR',
   ];
 
@@ -161,7 +193,12 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
         h.tanggalRfu,
         h.jamRfu,
         h.lokasi ?? '',
+        formatMrNumbers(h.mrNumbers, ''),
         h.keterangan,
+        h.komponen ?? '',
+        h.subKomponen ?? '',
+        h.detailSubKomponen ?? '',
+        h.activityPerbaikan ?? '',
         formatBdStatus(h.lastStatus),
       ]
         .map(escapeCsvCell)

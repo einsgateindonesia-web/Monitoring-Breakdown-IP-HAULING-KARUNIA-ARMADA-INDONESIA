@@ -110,6 +110,22 @@ export const BD_LOCATION_SUGGESTIONS: string[] = [
   'Parkiran / Staging',
 ];
 
+export const COMPONENT_SUGGESTIONS: string[] = [
+  'Engine',
+  'Transmission',
+  'Hydraulic System',
+  'Brake System',
+  'Electrical',
+  'Differential / Axle',
+  'Suspension / Spring',
+  'Tyre / Rim',
+  'Cooling System',
+  'Pneumatic / Air System',
+  'Steering System',
+  'Chassis / Vessel / Cabin',
+  'Scheduled PM / Service',
+];
+
 export interface BdStatusMeta {
   no: number;
   code: BdStatus;

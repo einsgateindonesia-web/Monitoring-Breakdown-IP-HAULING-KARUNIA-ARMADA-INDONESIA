@@ -28,6 +28,7 @@ export interface BreakdownRecord {
   jamBd: string; // HH:mm format
   tanggalBd: string; // YYYY-MM-DD
   lokasi: string;
+  mrNumbers: string[];
   keterangan: string;
   status: BdStatus;
   updatedAt: string;
@@ -42,7 +43,12 @@ export interface RfuHistoryRecord {
   jamRfu: string;
   tanggalRfu: string;
   lokasi: string;
-  keterangan: string;
+  mrNumbers: string[];
+  keterangan: string; // Keterangan Problem
+  komponen: string;
+  subKomponen: string;
+  detailSubKomponen: string;
+  activityPerbaikan: string;
   lastStatus: BdStatus;
 }
 

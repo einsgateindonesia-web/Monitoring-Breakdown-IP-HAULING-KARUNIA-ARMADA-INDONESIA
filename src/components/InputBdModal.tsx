@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { BD_LOCATION_SUGGESTIONS, BD_STATUS_CATALOG } from '../data/initialUnits';
 import { BdStatus, FleetUnit } from '../types/fleet';
 import { getCurrentTimeHHMM } from '../utils/fleetUtils';
+import { StackedMrEditor } from './MrListInput';
 import { Time24Input } from './Time24Input';
 
 interface InputBdModalProps {
@@ -14,6 +15,7 @@ interface InputBdModalProps {
     unitCode: string;
     jamBd: string;
     lokasi: string;
+    mrNumbers: string[];
     keterangan: string;
     status: BdStatus;
   }) => { ok: boolean; message?: string };
@@ -29,6 +31,7 @@ export function InputBdModal({
   const [unitCode, setUnitCode] = useState('');
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
   const [lokasi, setLokasi] = useState('');
+  const [mrNumbers, setMrNumbers] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
   const [error, setError] = useState('');
@@ -38,6 +41,7 @@ export function InputBdModal({
       setUnitCode(initialUnitCode ?? runningUnits[0]?.code ?? '');
       setJamBd(getCurrentTimeHHMM());
       setLokasi('');
+      setMrNumbers([]);
       setKeterangan('');
       setStatus('B0');
       setError('');
@@ -52,6 +56,7 @@ export function InputBdModal({
       unitCode,
       jamBd: jamBd || getCurrentTimeHHMM(),
       lokasi,
+      mrNumbers,
       keterangan,
       status,
     });
@@ -69,7 +74,7 @@ export function InputBdModal({
       aria-modal="true"
       aria-labelledby="modal-input-bd-title"
     >
-      <div className="w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
         <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 id="modal-input-bd-title" className="text-sm font-semibold text-slate-900">
@@ -89,7 +94,7 @@ export function InputBdModal({
           </button>
         </div>
 
-        <form onSubmit={handleFormSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleFormSubmit} className="p-5 space-y-4 overflow-y-auto ops-scroll">
           <datalist id="modal-bd-location-suggestions">
             {BD_LOCATION_SUGGESTIONS.map((loc) => (
               <option key={loc} value={loc} />
@@ -181,6 +186,20 @@ export function InputBdModal({
               placeholder="Contoh: KM 12 Hauling Road, Pit / Front Loading, Workshop IP..."
               autoFocus
               className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="modal-mr-input-0"
+              className="block text-xs font-semibold text-slate-700 mb-1"
+            >
+              NOMOR MR (Material Request)
+            </label>
+            <StackedMrEditor
+              value={mrNumbers}
+              onChange={setMrNumbers}
+              idPrefix="modal-mr"
             />
           </div>
 

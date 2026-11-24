@@ -7,6 +7,7 @@ import { PopulationManagerModal } from './components/PopulationManagerModal';
 import { RfuHistoryView } from './components/RfuHistoryView';
 import { TopBar } from './components/TopBar';
 import { UnitRunningPanel } from './components/UnitRunningPanel';
+import { BdBulkImportPayload, UploadBdModal } from './components/UploadBdModal';
 import { INITIAL_FLEET_UNITS, detectFleetGroup, normalizeBdStatus } from './data/initialUnits';
 import {
   ActiveTab,
@@ -22,6 +23,7 @@ import {
   exportRfuHistoryCsv,
   getCurrentDateYYYYMMDD,
   getCurrentTimeHHMM,
+  normalizeMrList,
 } from './utils/fleetUtils';
 import { getCurrentOperationalShiftDate } from './utils/hourlyShiftUtils';
 
@@ -50,6 +52,7 @@ export default function App() {
     loadFromStorage<BreakdownRecord[]>(STORAGE_KEYS.bdRecords, []).map((rec) => ({
       ...rec,
       lokasi: rec.lokasi ?? '',
+      mrNumbers: normalizeMrList(rec.mrNumbers),
       status: normalizeBdStatus(rec.status),
     }))
   );
@@ -57,6 +60,11 @@ export default function App() {
     loadFromStorage<RfuHistoryRecord[]>(STORAGE_KEYS.rfuHistory, []).map((item) => ({
       ...item,
       lokasi: item.lokasi ?? '',
+      mrNumbers: normalizeMrList(item.mrNumbers),
+      komponen: item.komponen ?? '',
+      subKomponen: item.subKomponen ?? '',
+      detailSubKomponen: item.detailSubKomponen ?? '',
+      activityPerbaikan: item.activityPerbaikan ?? '',
       lastStatus: normalizeBdStatus(item.lastStatus),
     }))
   );
@@ -69,6 +77,7 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalUnitCode, setModalUnitCode] = useState<string | null>(null);
   const [populationModalOpen, setPopulationModalOpen] = useState(false);
+  const [uploadBdModalOpen, setUploadBdModalOpen] = useState(false);
   const [copiedWa, setCopiedWa] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -132,6 +141,7 @@ export default function App() {
     unitCode: string;
     jamBd: string;
     lokasi: string;
+    mrNumbers: string[];
     keterangan: string;
     status: BdStatus;
   }): { ok: boolean; message?: string } => {
@@ -165,6 +175,7 @@ export default function App() {
       jamBd: payload.jamBd || getCurrentTimeHHMM(),
       tanggalBd: getCurrentDateYYYYMMDD(),
       lokasi: payload.lokasi.trim(),
+      mrNumbers: normalizeMrList(payload.mrNumbers),
       keterangan: payload.keterangan.trim(),
       status: payload.status,
       updatedAt: new Date().toISOString(),
@@ -177,12 +188,22 @@ export default function App() {
 
   const handleUpdateBd = (
     id: string,
-    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'keterangan' | 'status'>>
+    patch: Partial<
+      Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'mrNumbers' | 'keterangan' | 'status'>
+    >
   ) => {
     setBdRecords((prev) =>
       prev.map((rec) =>
         rec.id === id
-          ? { ...rec, ...patch, updatedAt: new Date().toISOString() }
+          ? {
+              ...rec,
+              ...patch,
+              mrNumbers:
+                patch.mrNumbers !== undefined
+                  ? normalizeMrList(patch.mrNumbers)
+                  : rec.mrNumbers,
+              updatedAt: new Date().toISOString(),
+            }
           : rec
       )
     );
@@ -201,7 +222,12 @@ export default function App() {
       jamRfu: getCurrentTimeHHMM(),
       tanggalRfu: getCurrentDateYYYYMMDD(),
       lokasi: target.lokasi ?? '',
+      mrNumbers: normalizeMrList(target.mrNumbers),
       keterangan: target.keterangan,
+      komponen: '',
+      subKomponen: '',
+      detailSubKomponen: '',
+      activityPerbaikan: '',
       lastStatus: target.status,
     };
 
@@ -413,6 +439,10 @@ export default function App() {
         return {
           ...item,
           ...patch,
+          mrNumbers:
+            patch.mrNumbers !== undefined
+              ? normalizeMrList(patch.mrNumbers)
+              : item.mrNumbers,
           unitCode: nextCode,
           fleetGroup: detectFleetGroup(nextCode),
         };
@@ -428,7 +458,12 @@ export default function App() {
     tanggalRfu: string;
     jamRfu: string;
     lokasi: string;
+    mrNumbers: string[];
     keterangan: string;
+    komponen: string;
+    subKomponen: string;
+    detailSubKomponen: string;
+    activityPerbaikan: string;
     lastStatus: BdStatus;
   }): { ok: boolean; message?: string } => {
     const code = payload.unitCode.trim().toUpperCase().replace(/\s+/g, ' ');
@@ -444,7 +479,12 @@ export default function App() {
       tanggalRfu: payload.tanggalRfu || getCurrentDateYYYYMMDD(),
       jamRfu: payload.jamRfu || getCurrentTimeHHMM(),
       lokasi: payload.lokasi.trim(),
+      mrNumbers: normalizeMrList(payload.mrNumbers),
       keterangan: payload.keterangan.trim(),
+      komponen: payload.komponen.trim(),
+      subKomponen: payload.subKomponen.trim(),
+      detailSubKomponen: payload.detailSubKomponen.trim(),
+      activityPerbaikan: payload.activityPerbaikan.trim(),
       lastStatus: payload.lastStatus,
     };
     setRfuHistory((prev) => [newEntry, ...prev]);
@@ -463,6 +503,153 @@ export default function App() {
   const handleOpenModalForUnit = (unitCode: string | null) => {
     setModalUnitCode(unitCode);
     setModalOpen(true);
+  };
+
+  const handleBulkImportBd = (
+    payload: BdBulkImportPayload
+  ): { ok: boolean; message?: string } => {
+    const nowIso = new Date().toISOString();
+    const nowTime = getCurrentTimeHHMM();
+    const nowDate = getCurrentDateYYYYMMDD();
+
+    const masterMap = new Map<string, FleetUnit>();
+    masterUnits.forEach((u) => {
+      masterMap.set(u.code.trim().toUpperCase(), u);
+    });
+
+    const newlyRegisteredUnits: FleetUnit[] = [];
+    let nextOrderIdx =
+      masterUnits.length > 0
+        ? Math.max(...masterUnits.map((u) => u.orderIndex)) + 1
+        : 1;
+
+    if (payload.autoRegisterUnknownUnits) {
+      for (const row of payload.rows) {
+        const key = row.unitCode.trim().toUpperCase();
+        if (!masterMap.has(key)) {
+          const newUnit: FleetUnit = {
+            id: `unit-${Date.now()}-${nextOrderIdx}`,
+            code: key,
+            fleetGroup: detectFleetGroup(key),
+            orderIndex: nextOrderIdx,
+          };
+          nextOrderIdx += 1;
+          masterMap.set(key, newUnit);
+          newlyRegisteredUnits.push(newUnit);
+        }
+      }
+    }
+
+    const existingBdMap = new Map<string, BreakdownRecord>();
+    bdRecords.forEach((rec) => {
+      existingBdMap.set(rec.unitCode.trim().toUpperCase(), rec);
+    });
+
+    const importedRecords: BreakdownRecord[] = [];
+    const importedCodeSet = new Set<string>();
+    let updatedCount = 0;
+    let addedBdCount = 0;
+
+    for (const row of payload.rows) {
+      const key = row.unitCode.trim().toUpperCase();
+      const matchedUnit = masterMap.get(key);
+      if (!matchedUnit) continue;
+
+      importedCodeSet.add(key);
+      const prevRec = existingBdMap.get(key);
+
+      if (prevRec) {
+        updatedCount += 1;
+        importedRecords.push({
+          ...prevRec,
+          jamBd: row.jamBd || prevRec.jamBd,
+          tanggalBd: row.tanggalBd || prevRec.tanggalBd,
+          lokasi: row.lokasi || prevRec.lokasi,
+          mrNumbers:
+            row.mrNumbers.length > 0 ? normalizeMrList(row.mrNumbers) : prevRec.mrNumbers ?? [],
+          keterangan: row.keterangan || prevRec.keterangan,
+          status: row.status,
+          updatedAt: nowIso,
+        });
+      } else {
+        addedBdCount += 1;
+        importedRecords.push({
+          id: `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          unitCode: matchedUnit.code,
+          fleetGroup: matchedUnit.fleetGroup,
+          jamBd: row.jamBd || nowTime,
+          tanggalBd: row.tanggalBd || nowDate,
+          lokasi: row.lokasi,
+          mrNumbers: normalizeMrList(row.mrNumbers),
+          keterangan: row.keterangan,
+          status: row.status,
+          updatedAt: nowIso,
+        });
+      }
+    }
+
+    if (newlyRegisteredUnits.length > 0) {
+      setMasterUnits((prev) => [...prev, ...newlyRegisteredUnits]);
+    }
+
+    let rfuMovedCount = 0;
+    if (payload.mode === 'replace') {
+      if (payload.markMissingAsRfu) {
+        const missingRecords = bdRecords.filter(
+          (rec) => !importedCodeSet.has(rec.unitCode.trim().toUpperCase())
+        );
+        if (missingRecords.length > 0) {
+          rfuMovedCount = missingRecords.length;
+          const rfuEntries: RfuHistoryRecord[] = missingRecords.map((rec, idx) => ({
+            id: `rfu-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+            unitCode: rec.unitCode,
+            fleetGroup: rec.fleetGroup,
+            jamBd: rec.jamBd,
+            tanggalBd: rec.tanggalBd,
+            jamRfu: nowTime,
+            tanggalRfu: nowDate,
+            lokasi: rec.lokasi ?? '',
+            mrNumbers: normalizeMrList(rec.mrNumbers),
+            keterangan: rec.keterangan,
+            komponen: '',
+            subKomponen: '',
+            detailSubKomponen: '',
+            activityPerbaikan: '',
+            lastStatus: rec.status,
+          }));
+          setRfuHistory((prev) => [...rfuEntries, ...prev]);
+        }
+      }
+      setBdRecords(importedRecords);
+    } else {
+      const updatedMap = new Map<string, BreakdownRecord>();
+      importedRecords.forEach((rec) => {
+        updatedMap.set(rec.unitCode.trim().toUpperCase(), rec);
+      });
+      const mergedExisting = bdRecords.map((rec) => {
+        const key = rec.unitCode.trim().toUpperCase();
+        return updatedMap.get(key) ?? rec;
+      });
+      const newlyAddedBd = importedRecords.filter(
+        (rec) => !existingBdMap.has(rec.unitCode.trim().toUpperCase())
+      );
+      setBdRecords([...mergedExisting, ...newlyAddedBd]);
+    }
+
+    const parts: string[] = [];
+    if (addedBdCount > 0) parts.push(`${addedBdCount} BD baru`);
+    if (updatedCount > 0) parts.push(`${updatedCount} diperbarui`);
+    if (newlyRegisteredUnits.length > 0) {
+      parts.push(`${newlyRegisteredUnits.length} unit baru terdaftar`);
+    }
+    if (rfuMovedCount > 0) parts.push(`${rfuMovedCount} dicatat RFU`);
+
+    showToast(
+      parts.length > 0
+        ? `Upload Excel BD berhasil: ${parts.join(', ')}.`
+        : 'Daftar Unit BD disinkronkan.'
+    );
+    return { ok: true };
   };
 
   return (
@@ -506,6 +693,7 @@ export default function App() {
                   onCancelBd={handleCancelBd}
                   onCopyWaReport={handleCopyWaReport}
                   onExportCsv={() => exportBoardCsv(runningUnits, bdRecords)}
+                  onOpenUploadBd={() => setUploadBdModalOpen(true)}
                   copiedWa={copiedWa}
                 />
               </div>
@@ -566,6 +754,14 @@ export default function App() {
         onUpdateUnitCode={handleUpdateMasterUnitCode}
         onDeleteUnit={handleDeleteMasterUnit}
         onResetDefault={handleResetDefaultPopulation}
+      />
+
+      <UploadBdModal
+        isOpen={uploadBdModalOpen}
+        masterUnits={masterUnits}
+        bdRecords={bdRecords}
+        onClose={() => setUploadBdModalOpen(false)}
+        onApplyImport={handleBulkImportBd}
       />
 
       {toastMsg && (

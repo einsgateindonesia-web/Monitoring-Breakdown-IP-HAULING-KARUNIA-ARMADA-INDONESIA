@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, ChevronDown, Copy, Download, RotateCcw, Search, Trash2, Wrench } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, RotateCcw, Search, Trash2, Upload, Wrench } from 'lucide-react';
 import {
   BD_LOCATION_SUGGESTIONS,
   BD_STATUS_CATALOG,
@@ -8,6 +8,7 @@ import {
 } from '../data/initialUnits';
 import { BdStatus, BreakdownRecord, FleetUnit } from '../types/fleet';
 import { getCurrentTimeHHMM } from '../utils/fleetUtils';
+import { CompactMrInput, InlineTableMrCell } from './MrListInput';
 import { Time24Input } from './Time24Input';
 
 interface InputBdPanelProps {
@@ -17,17 +18,21 @@ interface InputBdPanelProps {
     unitCode: string;
     jamBd: string;
     lokasi: string;
+    mrNumbers: string[];
     keterangan: string;
     status: BdStatus;
   }) => { ok: boolean; message?: string };
   onUpdateBd: (
     id: string,
-    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'keterangan' | 'status'>>
+    patch: Partial<
+      Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'mrNumbers' | 'keterangan' | 'status'>
+    >
   ) => void;
   onMarkRfu: (id: string) => void;
   onCancelBd: (id: string) => void;
   onCopyWaReport: () => void;
   onExportCsv: () => void;
+  onOpenUploadBd: () => void;
   copiedWa: boolean;
 }
 
@@ -40,11 +45,13 @@ export function InputBdPanel({
   onCancelBd,
   onCopyWaReport,
   onExportCsv,
+  onOpenUploadBd,
   copiedWa,
 }: InputBdPanelProps) {
   const [unitInput, setUnitInput] = useState('');
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
   const [lokasi, setLokasi] = useState('');
+  const [mrNumbers, setMrNumbers] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
   const [formError, setFormError] = useState('');
@@ -64,10 +71,12 @@ export function InputBdPanel({
     return bdRecords.filter((rec) => {
       const matchStatus = statusFilter === 'ALL' || rec.status === statusFilter;
       const statusLabel = (BD_STATUS_LABELS[rec.status] ?? '').toLowerCase();
+      const mrJoined = (rec.mrNumbers ?? []).join(' ').toLowerCase();
       const matchSearch =
         !q ||
         rec.unitCode.toLowerCase().includes(q) ||
         (rec.lokasi ?? '').toLowerCase().includes(q) ||
+        mrJoined.includes(q) ||
         rec.keterangan.toLowerCase().includes(q) ||
         rec.status.toLowerCase().includes(q) ||
         statusLabel.includes(q);
@@ -81,6 +90,7 @@ export function InputBdPanel({
       unitCode: unitInput,
       jamBd: jamBd || getCurrentTimeHHMM(),
       lokasi,
+      mrNumbers,
       keterangan,
       status,
     });
@@ -90,6 +100,7 @@ export function InputBdPanel({
     }
     setUnitInput('');
     setLokasi('');
+    setMrNumbers([]);
     setKeterangan('');
     setJamBd(getCurrentTimeHHMM());
     setStatus('B0');
@@ -108,7 +119,16 @@ export function InputBdPanel({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenUploadBd}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Upload Excel BD</span>
+          </button>
+
           <button
             type="button"
             onClick={onCopyWaReport}
@@ -149,7 +169,7 @@ export function InputBdPanel({
           ))}
         </datalist>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.95fr_1.3fr_1.8fr_1.3fr_auto] gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.15fr_0.85fr_1.15fr_1.35fr_1.5fr_1.2fr_auto] gap-2 items-end">
           {/* UNIT BD Combobox */}
           <div className="relative">
             <label
@@ -264,6 +284,23 @@ export function InputBdPanel({
             />
           </div>
 
+          {/* NOMOR MR */}
+          <div>
+            <label
+              htmlFor="quick-mr-bd"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              NOMOR MR
+            </label>
+            <CompactMrInput
+              id="quick-mr-bd"
+              value={mrNumbers}
+              onChange={setMrNumbers}
+              placeholder="MR-001, MR-002..."
+              ariaLabel="Nomor MR Unit BD"
+            />
+          </div>
+
           {/* KETERANGAN */}
           <div>
             <label
@@ -330,7 +367,7 @@ export function InputBdPanel({
             type="text"
             value={bdSearch}
             onChange={(e) => setBdSearch(e.target.value)}
-            placeholder="Filter unit BD, lokasi, atau keterangan..."
+            placeholder="Filter unit BD, lokasi, nomor MR, atau keterangan..."
             aria-label="Filter unit BD"
             className="w-full pl-8 pr-3 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
@@ -358,13 +395,14 @@ export function InputBdPanel({
 
       {/* Inline Editable Spreadsheet Table */}
       <div className="flex-1 overflow-auto ops-scroll">
-        <table className="w-full text-left border-collapse min-w-[820px]">
+        <table className="w-full text-left border-collapse min-w-[980px]">
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
               <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
               <th className="py-2 px-2 w-28">UNIT BD</th>
               <th className="py-2 px-2 w-24">JAM BD</th>
-              <th className="py-2 px-2 w-40">POSISI / LOKASI</th>
+              <th className="py-2 px-2 w-36">POSISI / LOKASI</th>
+              <th className="py-2 px-2 w-44">NOMOR MR</th>
               <th className="py-2 px-2">KETERANGAN</th>
               <th className="py-2 px-2 w-52">STATUS</th>
               <th className="py-2 pl-2 pr-4 text-right w-32">AKSI</th>
@@ -373,7 +411,7 @@ export function InputBdPanel({
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredBdRecords.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-16 px-4 text-center">
+                <td colSpan={8} className="py-16 px-4 text-center">
                   <div className="max-w-sm mx-auto space-y-2">
                     <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
                       <Wrench className="w-4 h-4" aria-hidden="true" />
@@ -419,6 +457,13 @@ export function InputBdPanel({
                         placeholder="Isi posisi / lokasi..."
                         onChange={(e) => onUpdateBd(rec.id, { lokasi: e.target.value })}
                         className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <InlineTableMrCell
+                        unitCode={rec.unitCode}
+                        value={rec.mrNumbers ?? []}
+                        onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
                       />
                     </td>
                     <td className="py-2 px-2">
