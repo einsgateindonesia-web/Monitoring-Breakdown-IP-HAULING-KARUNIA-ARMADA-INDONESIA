@@ -1,0 +1,445 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Hardened Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && isVerifiedEmail() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn()
+        && isVerifiedEmail()
+        && request.auth.token.email == 'einsgateindonesia@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isSignedIn() && isVerifiedEmail() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isAdmin()
+        || (isSignedIn() && isVerifiedEmail() && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)));
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && isVerifiedEmail()
+          && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == 'admin'
+        );
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+    function isValidUserPublic(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidUserPrivate(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 160
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAdminRole(data, userId) {
+      return data.keys().hasAll(['uid', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'createdAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.createdAt is timestamp
+        && data.createdAt == request.time;
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['name', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && isValidId(data.ownerUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidWorkspaceInvite(data, workspaceId, inviteCode) {
+      return data.keys().hasAll(['code', 'workspaceId', 'ownerUid', 'active', 'createdByUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'workspaceId', 'ownerUid', 'active', 'createdByUid', 'createdAt', 'updatedAt'])
+        && isValidId(data.code)
+        && data.code == inviteCode
+        && data.code.size() <= 64
+        && isValidId(data.workspaceId)
+        && data.workspaceId == workspaceId
+        && isValidId(data.ownerUid)
+        && data.active is bool
+        && isValidId(data.createdByUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidWorkspaceMember(data, workspaceId, memberUid) {
+      return data.keys().hasAll(['uid', 'workspaceId', 'ownerUid', 'displayName', 'role', 'inviteCode', 'joinedAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'workspaceId', 'ownerUid', 'displayName', 'role', 'inviteCode', 'joinedAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == memberUid
+        && isValidId(data.workspaceId)
+        && data.workspaceId == workspaceId
+        && isValidId(data.ownerUid)
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.role is string
+        && (data.role == 'admin' || data.role == 'operator')
+        && isValidId(data.inviteCode)
+        && data.inviteCode.size() <= 64
+        && data.joinedAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidFleetDoc(data) {
+      return data.keys().hasAll(['units', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.keys().hasOnly(['units', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.units is map
+        && data.units.size() <= 1000
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByName is string
+        && data.updatedByName.size() >= 1
+        && data.updatedByName.size() <= 80
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidActiveBdDoc(data) {
+      return data.keys().hasAll(['records', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.keys().hasOnly(['records', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.records is map
+        && data.records.size() <= 500
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByName is string
+        && data.updatedByName.size() >= 1
+        && data.updatedByName.size() <= 80
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidMetaDoc(data) {
+      return data.keys().hasAll(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid'])
+        && data.keys().hasOnly(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid'])
+        && data.rfuMonths is list
+        && data.rfuMonths.size() <= 120
+        && (data.rfuMonths.size() == 0 || data.rfuMonths[0] is string)
+        && data.hourlyMonths is list
+        && data.hourlyMonths.size() <= 120
+        && (data.hourlyMonths.size() == 0 || data.hourlyMonths[0] is string)
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidRfuMonthDoc(data, monthKey) {
+      return data.keys().hasAll(['monthKey', 'records', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.keys().hasOnly(['monthKey', 'records', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && isValidId(data.monthKey)
+        && data.monthKey == monthKey
+        && data.monthKey.size() <= 16
+        && data.records is map
+        && data.records.size() <= 1500
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByName is string
+        && data.updatedByName.size() >= 1
+        && data.updatedByName.size() <= 80
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidHourlyMonthDoc(data, monthKey) {
+      return data.keys().hasAll(['monthKey', 'overrides', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && data.keys().hasOnly(['monthKey', 'overrides', 'updatedAt', 'updatedByUid', 'updatedByName'])
+        && isValidId(data.monthKey)
+        && data.monthKey == monthKey
+        && data.monthKey.size() <= 16
+        && data.overrides is map
+        && data.overrides.size() <= 1000
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByName is string
+        && data.updatedByName.size() >= 1
+        && data.updatedByName.size() <= 80
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    // 4. Match Blocks for All Collections
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+      allow create: if isBootstrappedAdmin() && isValidId(userId) && isValidAdminRole(incoming(), userId);
+      allow update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserPublic(incoming(), userId)
+        && incoming().createdAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserPublic(incoming(), userId)
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && (isOwner(userId) || isAdmin());
+        allow list: if false;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && docId == 'info'
+          && isValidUserPrivate(incoming(), userId);
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && docId == 'info'
+          && isValidUserPrivate(incoming(), userId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+        allow delete: if false;
+      }
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isBootstrappedAdmin()
+        && isValidId(workspaceId)
+        && isValidWorkspace(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isWorkspaceAdmin(workspaceId)
+        && isValidId(workspaceId)
+        && isValidWorkspace(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+      allow delete: if false;
+
+      match /invites/{inviteCode} {
+        allow get: if isSignedIn() && isVerifiedEmail() && isValidId(workspaceId) && isValidId(inviteCode);
+        allow list: if isSignedIn() && isVerifiedEmail() && existing().ownerUid == request.auth.uid;
+        allow create: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidId(inviteCode)
+          && isValidWorkspaceInvite(incoming(), workspaceId, inviteCode)
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/workspaces/$(workspaceId))
+          && incoming().ownerUid == get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid;
+        allow update: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidId(inviteCode)
+          && isValidWorkspaceInvite(incoming(), workspaceId, inviteCode)
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['active', 'updatedAt']);
+        allow delete: if isWorkspaceAdmin(workspaceId) && isValidId(workspaceId) && isValidId(inviteCode);
+      }
+
+      match /members/{memberUid} {
+        allow get: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(memberUid)
+          && (request.auth.uid == memberUid || isWorkspaceMember(workspaceId));
+        allow list: if isSignedIn()
+          && isVerifiedEmail()
+          && (existing().uid == request.auth.uid || existing().ownerUid == request.auth.uid);
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(memberUid)
+          && isValidWorkspaceMember(incoming(), workspaceId, memberUid)
+          && incoming().joinedAt == request.time
+          && exists(/databases/$(database)/documents/workspaces/$(workspaceId))
+          && incoming().ownerUid == get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid
+          && (
+            (isBootstrappedAdmin() && request.auth.uid == memberUid)
+            || isWorkspaceAdmin(workspaceId)
+            || (
+              request.auth.uid == memberUid
+              && incoming().role == 'operator'
+              && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode))
+              && get(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode)).data.active == true
+              && get(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode)).data.ownerUid == incoming().ownerUid
+            )
+          );
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(memberUid)
+          && isValidWorkspaceMember(incoming(), workspaceId, memberUid)
+          && incoming().uid == existing().uid
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().inviteCode == existing().inviteCode
+          && incoming().joinedAt == existing().joinedAt
+          && (
+            (
+              request.auth.uid == memberUid
+              && incoming().role == existing().role
+              && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+            )
+            || (
+              isWorkspaceAdmin(workspaceId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])
+            )
+          );
+        allow delete: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidId(memberUid)
+          && memberUid != request.auth.uid;
+      }
+
+      match /board/fleet {
+        allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidFleetDoc(incoming())
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidFleetDoc(incoming())
+          && isWorkspaceMember(workspaceId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['units', 'updatedAt', 'updatedByUid', 'updatedByName']);
+        allow delete: if false;
+      }
+
+      match /board/activeBd {
+        allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidActiveBdDoc(incoming())
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidActiveBdDoc(incoming())
+          && isWorkspaceMember(workspaceId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['records', 'updatedAt', 'updatedByUid', 'updatedByName']);
+        allow delete: if false;
+      }
+
+      match /board/meta {
+        allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidMetaDoc(incoming())
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidMetaDoc(incoming())
+          && isWorkspaceMember(workspaceId)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['rfuMonths', 'hourlyMonths', 'updatedAt', 'updatedByUid']);
+        allow delete: if false;
+      }
+
+      match /rfuMonths/{monthKey} {
+        allow get: if isValidId(workspaceId) && isValidId(monthKey) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(monthKey)
+          && isValidRfuMonthDoc(incoming(), monthKey)
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(monthKey)
+          && isValidRfuMonthDoc(incoming(), monthKey)
+          && isWorkspaceMember(workspaceId)
+          && incoming().monthKey == existing().monthKey
+          && incoming().diff(existing()).affectedKeys().hasOnly(['records', 'updatedAt', 'updatedByUid', 'updatedByName']);
+        allow delete: if isWorkspaceAdmin(workspaceId) && isValidId(workspaceId) && isValidId(monthKey);
+      }
+
+      match /hourlyMonths/{monthKey} {
+        allow get: if isValidId(workspaceId) && isValidId(monthKey) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(monthKey)
+          && isValidHourlyMonthDoc(incoming(), monthKey)
+          && isWorkspaceMember(workspaceId);
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidId(monthKey)
+          && isValidHourlyMonthDoc(incoming(), monthKey)
+          && isWorkspaceMember(workspaceId)
+          && incoming().monthKey == existing().monthKey
+          && incoming().diff(existing()).affectedKeys().hasOnly(['overrides', 'updatedAt', 'updatedByUid', 'updatedByName']);
+        allow delete: if false;
+      }
+    }
+  }
+}

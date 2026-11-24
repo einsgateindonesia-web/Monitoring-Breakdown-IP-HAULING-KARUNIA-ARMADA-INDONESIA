@@ -1,0 +1,356 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Non-PII public profile record for a signed-in user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Strictly isolated PII (email) accessible only by the owner or system admin.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "updatedAt"]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Trusted admin role marker document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Shared operational fleet workspace for team collaboration.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "WorkspaceInvite": {
+      "title": "WorkspaceInvite",
+      "description": "Invite code allowing coworkers to join the operational workspace as operators.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["code", "workspaceId", "ownerUid", "active", "createdByUid", "createdAt", "updatedAt"]
+    },
+    "WorkspaceMember": {
+      "title": "WorkspaceMember",
+      "description": "Membership record for a coworker in a workspace (non-PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "operator"]
+        },
+        "inviteCode": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "workspaceId", "ownerUid", "displayName", "role", "inviteCode", "joinedAt", "updatedAt"]
+    },
+    "WorkspaceFleetDoc": {
+      "title": "WorkspaceFleetDoc",
+      "description": "Master fleet unit population map synchronized across the workspace.",
+      "type": "object",
+      "properties": {
+        "units": {
+          "type": "object",
+          "description": "Map of unitId to FleetUnit record (max 1000 units)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["units", "updatedAt", "updatedByUid", "updatedByName"]
+    },
+    "WorkspaceActiveBdDoc": {
+      "title": "WorkspaceActiveBdDoc",
+      "description": "Active breakdown records map synchronized across the workspace.",
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "object",
+          "description": "Map of bdId to BreakdownRecord (max 500 active BD records)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["records", "updatedAt", "updatedByUid", "updatedByName"]
+    },
+    "WorkspaceMetaDoc": {
+      "title": "WorkspaceMetaDoc",
+      "description": "Index of active monthly RFU and hourly monitoring shard keys.",
+      "type": "object",
+      "properties": {
+        "rfuMonths": {
+          "type": "array",
+          "description": "Bounded list of YYYY-MM keys (max 120)."
+        },
+        "hourlyMonths": {
+          "type": "array",
+          "description": "Bounded list of YYYY-MM keys (max 120)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": ["rfuMonths", "hourlyMonths", "updatedAt", "updatedByUid"]
+    },
+    "WorkspaceRfuMonthDoc": {
+      "title": "WorkspaceRfuMonthDoc",
+      "description": "Monthly shard of RFU repair history records.",
+      "type": "object",
+      "properties": {
+        "monthKey": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "records": {
+          "type": "object",
+          "description": "Map of rfuId to RfuHistoryRecord (max 1500 entries per month)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["monthKey", "records", "updatedAt", "updatedByUid", "updatedByName"]
+    },
+    "WorkspaceHourlyMonthDoc": {
+      "title": "WorkspaceHourlyMonthDoc",
+      "description": "Monthly shard of hourly PA manual slot overrides.",
+      "type": "object",
+      "properties": {
+        "monthKey": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "overrides": {
+          "type": "object",
+          "description": "Map of slot key to HourlySlotOverride (max 1000 entries per month)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "maxLength": 80
+        }
+      },
+      "required": ["monthKey", "overrides", "updatedAt", "updatedByUid", "updatedByName"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Public non-PII user display profile."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Private user PII such as email address."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Trusted admin role documents."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Shared operational fleet workspace."
+    },
+    "/workspaces/{workspaceId}/invites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/WorkspaceInvite" },
+      "description": "Invite tokens used by coworkers to join a workspace."
+    },
+    "/workspaces/{workspaceId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/WorkspaceMember" },
+      "description": "Workspace member roles and display names."
+    },
+    "/workspaces/{workspaceId}/board/fleet": {
+      "schema": { "$ref": "#/entities/WorkspaceFleetDoc" },
+      "description": "Live master unit population map."
+    },
+    "/workspaces/{workspaceId}/board/activeBd": {
+      "schema": { "$ref": "#/entities/WorkspaceActiveBdDoc" },
+      "description": "Live active breakdown records map."
+    },
+    "/workspaces/{workspaceId}/board/meta": {
+      "schema": { "$ref": "#/entities/WorkspaceMetaDoc" },
+      "description": "Active month keys index for RFU and hourly monitoring."
+    },
+    "/workspaces/{workspaceId}/rfuMonths/{monthKey}": {
+      "schema": { "$ref": "#/entities/WorkspaceRfuMonthDoc" },
+      "description": "Monthly RFU repair history shard."
+    },
+    "/workspaces/{workspaceId}/hourlyMonths/{monthKey}": {
+      "schema": { "$ref": "#/entities/WorkspaceHourlyMonthDoc" },
+      "description": "Monthly hourly PA monitoring override shard."
+    }
+  }
+}
