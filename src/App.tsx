@@ -111,13 +111,16 @@ export default function App() {
   // Auth & Workspace Collaboration State
   const [authReady, setAuthReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
   const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceInfo | null>(null);
   const [membership, setMembership] = useState<WorkspaceMemberInfo | null>(null);
   const [lastEditorName, setLastEditorName] = useState<string | null>(null);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [syncError, setSyncError] = useState<Error | null>(null);
+  const pendingInviteRef = useRef<string>(initialUrlParams.inviteCode);
 
   // Operational Board State (real-time synced from Firestore once member)
   const [masterUnits, setMasterUnits] = useState<FleetUnit[]>(INITIAL_FLEET_UNITS);
@@ -233,15 +236,17 @@ export default function App() {
     });
   }, []);
 
-  // Auth listener
+  // Auth listener (registered once per workspaceId)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       setAuthError(null);
+      setAuthErrorCode(null);
 
       if (!user) {
         setMembership(null);
         setWorkspaceInfo(null);
+        setWorkspaceLoading(false);
         setAuthReady(true);
         return;
       }
@@ -256,10 +261,12 @@ export default function App() {
           setMembership(res.membership);
         } else {
           let existingMember = await fetchMembership(workspaceId, user.uid);
-          if (!existingMember && pendingInviteCode) {
-            const joinRes = await joinWorkspaceWithInvite(workspaceId, pendingInviteCode, user);
+          const inviteToUse = pendingInviteRef.current;
+          if (!existingMember && inviteToUse) {
+            const joinRes = await joinWorkspaceWithInvite(workspaceId, inviteToUse, user);
             if (joinRes.ok && joinRes.membership) {
               existingMember = joinRes.membership;
+              pendingInviteRef.current = '';
               setPendingInviteCode('');
               if (typeof window !== 'undefined' && window.location.search) {
                 window.history.replaceState({}, '', window.location.pathname);
@@ -283,12 +290,13 @@ export default function App() {
         setSyncError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         setWorkspaceLoading(false);
+        setSigningIn(false);
         setAuthReady(true);
       }
     });
 
     return () => unsub();
-  }, [workspaceId, pendingInviteCode, showToast]);
+  }, [workspaceId, showToast]);
 
   // Real-time Board Subscriptions (only when authenticated & member)
   useEffect(() => {
@@ -392,15 +400,39 @@ export default function App() {
 
   const handleSignInGoogle = async () => {
     setAuthError(null);
-    setWorkspaceLoading(true);
+    setAuthErrorCode(null);
+    setSigningIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gagal masuk dengan Google.';
-      if (!msg.includes('popup-closed-by-user')) {
-        setAuthError('Gagal masuk dengan akun Google. Silakan coba lagi.');
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code ?? '')
+          : '';
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      setAuthErrorCode(code || null);
+
+      if (code === 'auth/popup-blocked') {
+        setAuthError(
+          'Popup login Google diblokir oleh browser. Izinkan popup atau buka aplikasi di tab baru.'
+        );
+      } else if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setAuthError(
+          'Jendela login Google ditutup sebelum proses masuk selesai. Jika terjadi di mode preview, coba buka di tab baru.'
+        );
+      } else if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        setAuthError(
+          `Domain (${host}) belum diizinkan di Firebase Auth Authorized Domains.`
+        );
+      } else if (code === 'auth/operation-not-allowed') {
+        setAuthError('Login Google belum diaktifkan di konfigurasi Firebase Authentication.');
+      } else if (code === 'auth/network-request-failed') {
+        setAuthError('Koneksi jaringan bermasalah saat menghubungi server Google Login.');
+      } else {
+        setAuthError(`Gagal masuk dengan akun Google: ${rawMessage}`);
       }
-      setWorkspaceLoading(false);
+      setSigningIn(false);
     }
   };
 
@@ -1107,8 +1139,8 @@ export default function App() {
     showToast('Data lokal berhasil disinkronkan ke Cloud tim.');
   };
 
-  // Show loading or sign-in / join gate if not yet ready in workspace
-  if (!authReady || workspaceLoading) {
+  // Show loading spinner while checking initial auth or setting up workspace after sign-in
+  if (!authReady || (currentUser && workspaceLoading)) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
         <div className="text-center space-y-2">
@@ -1126,8 +1158,9 @@ export default function App() {
       <OnlineAuthGate
         mode="signin"
         pendingInviteCode={pendingInviteCode}
-        loading={workspaceLoading}
+        loading={signingIn}
         errorMessage={authError}
+        errorCode={authErrorCode}
         onSignInGoogle={handleSignInGoogle}
         onSignOut={handleSignOut}
         onJoinWithCode={handleJoinWithCode}
@@ -1144,6 +1177,7 @@ export default function App() {
         pendingInviteCode={pendingInviteCode}
         loading={workspaceLoading}
         errorMessage={authError}
+        errorCode={authErrorCode}
         onSignInGoogle={handleSignInGoogle}
         onSignOut={handleSignOut}
         onJoinWithCode={handleJoinWithCode}

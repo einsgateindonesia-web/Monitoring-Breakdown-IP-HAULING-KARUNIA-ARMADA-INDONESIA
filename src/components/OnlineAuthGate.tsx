@@ -1,5 +1,5 @@
-import { KeyRound, LogIn, LogOut, ShieldCheck, Users } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { ExternalLink, KeyRound, LogIn, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { FormEvent, useMemo, useState } from 'react';
 
 interface OnlineAuthGateProps {
   mode: 'signin' | 'join';
@@ -8,6 +8,7 @@ interface OnlineAuthGateProps {
   pendingInviteCode?: string;
   loading?: boolean;
   errorMessage?: string | null;
+  errorCode?: string | null;
   onSignInGoogle: () => Promise<void>;
   onSignOut: () => Promise<void>;
   onJoinWithCode: (code: string) => Promise<{ ok: boolean; message?: string }>;
@@ -20,6 +21,7 @@ export function OnlineAuthGate({
   pendingInviteCode = '',
   loading = false,
   errorMessage = null,
+  errorCode = null,
   onSignInGoogle,
   onSignOut,
   onJoinWithCode,
@@ -27,6 +29,16 @@ export function OnlineAuthGate({
   const [inviteInput, setInviteInput] = useState(pendingInviteCode);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const isInIframe = useMemo(() => {
+    try {
+      return typeof window !== 'undefined' && window.self !== window.top;
+    } catch {
+      return true;
+    }
+  }, []);
+
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
 
   const handleJoinSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -67,8 +79,28 @@ export function OnlineAuthGate({
               )}
 
               {errorMessage && (
-                <div className="p-3 rounded-md bg-red-50 border border-red-200 text-xs text-red-800">
-                  {errorMessage}
+                <div className="p-3 rounded-md bg-red-50 border border-red-200 text-xs text-red-900 space-y-2">
+                  <p className="font-medium leading-relaxed">{errorMessage}</p>
+                  {errorCode && (
+                    <p className="font-mono text-[11px] text-red-700">
+                      Kode: {errorCode}
+                    </p>
+                  )}
+                  {(isInIframe ||
+                    errorCode === 'auth/popup-blocked' ||
+                    errorCode === 'auth/popup-closed-by-user' ||
+                    errorCode === 'auth/cancelled-popup-request') &&
+                    currentUrl && (
+                      <a
+                        href={currentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-800 bg-white border border-blue-300 hover:bg-blue-50 rounded cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Buka Aplikasi di Tab Baru</span>
+                      </a>
+                    )}
                 </div>
               )}
 
@@ -79,8 +111,23 @@ export function OnlineAuthGate({
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-md transition-colors cursor-pointer whitespace-nowrap"
               >
                 <LogIn className="w-4 h-4" aria-hidden="true" />
-                <span>{loading ? 'Menghubungkan...' : 'Masuk dengan Akun Google'}</span>
+                <span>{loading ? 'Membuka Login Google...' : 'Masuk dengan Akun Google'}</span>
               </button>
+
+              {isInIframe && currentUrl && (
+                <div className="p-3 rounded-md bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between gap-2">
+                  <span>Jika popup Google terblokir di preview, buka di tab penuh:</span>
+                  <a
+                    href={currentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline whitespace-nowrap shrink-0"
+                  >
+                    <span>Tab Baru</span>
+                    <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                  </a>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5 text-xs text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />

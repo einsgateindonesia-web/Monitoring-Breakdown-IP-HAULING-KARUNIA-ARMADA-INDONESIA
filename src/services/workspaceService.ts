@@ -274,16 +274,12 @@ export async function ensureWorkspaceForBootstrappedAdmin(
     handleFirestoreError(err, OperationType.WRITE, memberPath);
   }
 
-  // Ensure at least one invite code exists if user is owner
+  // Ensure default invite code exists if user is owner (direct getDoc avoids list permission edge cases)
   if (ownerUid === user.uid) {
     try {
-      const invitesQuery = query(
-        collection(db, 'workspaces', workspaceId, 'invites'),
-        where('ownerUid', '==', ownerUid)
-      );
-      const invitesSnap = await getDocs(invitesQuery);
-      if (invitesSnap.empty) {
-        const inviteRef = doc(db, 'workspaces', workspaceId, 'invites', DEFAULT_INVITE_CODE);
+      const inviteRef = doc(db, 'workspaces', workspaceId, 'invites', DEFAULT_INVITE_CODE);
+      const inviteSnap = await getDoc(inviteRef);
+      if (!inviteSnap.exists()) {
         await setDoc(inviteRef, {
           code: DEFAULT_INVITE_CODE,
           workspaceId,
@@ -295,7 +291,7 @@ export async function ensureWorkspaceForBootstrappedAdmin(
         });
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `workspaces/${workspaceId}/invites`);
+      handleFirestoreError(err, OperationType.WRITE, `workspaces/${workspaceId}/invites/${DEFAULT_INVITE_CODE}`);
     }
   }
 
