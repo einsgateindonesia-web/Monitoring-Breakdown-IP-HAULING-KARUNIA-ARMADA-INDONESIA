@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronDown, Copy, Download, RotateCcw, Search, Trash2, Wrench } from 'lucide-react';
-import { BD_STATUS_OPTIONS, BD_STATUS_STYLES } from '../data/initialUnits';
+import {
+  BD_LOCATION_SUGGESTIONS,
+  BD_STATUS_CATALOG,
+  BD_STATUS_LABELS,
+  BD_STATUS_STYLES,
+} from '../data/initialUnits';
 import { BdStatus, BreakdownRecord, FleetUnit } from '../types/fleet';
 import { getCurrentTimeHHMM } from '../utils/fleetUtils';
+import { Time24Input } from './Time24Input';
 
 interface InputBdPanelProps {
   runningUnits: FleetUnit[];
@@ -10,12 +16,13 @@ interface InputBdPanelProps {
   onAddBd: (payload: {
     unitCode: string;
     jamBd: string;
+    lokasi: string;
     keterangan: string;
     status: BdStatus;
   }) => { ok: boolean; message?: string };
   onUpdateBd: (
     id: string,
-    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'keterangan' | 'status'>>
+    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'keterangan' | 'status'>>
   ) => void;
   onMarkRfu: (id: string) => void;
   onCancelBd: (id: string) => void;
@@ -37,8 +44,9 @@ export function InputBdPanel({
 }: InputBdPanelProps) {
   const [unitInput, setUnitInput] = useState('');
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
+  const [lokasi, setLokasi] = useState('');
   const [keterangan, setKeterangan] = useState('');
-  const [status, setStatus] = useState<BdStatus>('Diagnosa');
+  const [status, setStatus] = useState<BdStatus>('B0');
   const [formError, setFormError] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -55,11 +63,14 @@ export function InputBdPanel({
     const q = bdSearch.trim().toLowerCase();
     return bdRecords.filter((rec) => {
       const matchStatus = statusFilter === 'ALL' || rec.status === statusFilter;
+      const statusLabel = (BD_STATUS_LABELS[rec.status] ?? '').toLowerCase();
       const matchSearch =
         !q ||
         rec.unitCode.toLowerCase().includes(q) ||
+        (rec.lokasi ?? '').toLowerCase().includes(q) ||
         rec.keterangan.toLowerCase().includes(q) ||
-        rec.status.toLowerCase().includes(q);
+        rec.status.toLowerCase().includes(q) ||
+        statusLabel.includes(q);
       return matchStatus && matchSearch;
     });
   }, [bdRecords, bdSearch, statusFilter]);
@@ -69,6 +80,7 @@ export function InputBdPanel({
     const res = onAddBd({
       unitCode: unitInput,
       jamBd: jamBd || getCurrentTimeHHMM(),
+      lokasi,
       keterangan,
       status,
     });
@@ -77,9 +89,10 @@ export function InputBdPanel({
       return;
     }
     setUnitInput('');
+    setLokasi('');
     setKeterangan('');
     setJamBd(getCurrentTimeHHMM());
-    setStatus('Diagnosa');
+    setStatus('B0');
     setFormError('');
     setShowSuggestions(false);
   };
@@ -130,9 +143,15 @@ export function InputBdPanel({
         onSubmit={handleSubmit}
         className="px-4 py-3 bg-slate-50 border-b border-slate-200"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+        <datalist id="bd-location-suggestions">
+          {BD_LOCATION_SUGGESTIONS.map((loc) => (
+            <option key={loc} value={loc} />
+          ))}
+        </datalist>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.95fr_1.3fr_1.8fr_1.3fr_auto] gap-2 items-end">
           {/* UNIT BD Combobox */}
-          <div className="sm:col-span-3 relative">
+          <div className="relative">
             <label
               htmlFor="quick-unit-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
@@ -169,7 +188,7 @@ export function InputBdPanel({
               </button>
             </div>
             {showSuggestions && (
-              <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-md shadow-md overflow-hidden">
+              <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-slate-200 rounded-md shadow-md overflow-hidden min-w-[210px]">
                 <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 text-[11px] font-medium text-slate-500 flex items-center justify-between tabular-nums">
                   <span>Populasi Running</span>
                   <span className="font-mono text-slate-700">
@@ -209,25 +228,44 @@ export function InputBdPanel({
             )}
           </div>
 
-          {/* JAM BD */}
-          <div className="sm:col-span-2">
+          {/* JAM BD (24 Jam) */}
+          <div>
             <label
               htmlFor="quick-jam-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
             >
-              JAM BD
+              JAM BD (24:00)
+            </label>
+            <Time24Input
+              id="quick-jam-bd"
+              value={jamBd}
+              onChange={setJamBd}
+              placeholder="00:00"
+              className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+            />
+          </div>
+
+          {/* POSISI / LOKASI BD */}
+          <div>
+            <label
+              htmlFor="quick-lokasi-bd"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              POSISI / LOKASI BD
             </label>
             <input
-              id="quick-jam-bd"
-              type="time"
-              value={jamBd}
-              onChange={(e) => setJamBd(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+              id="quick-lokasi-bd"
+              type="text"
+              list="bd-location-suggestions"
+              value={lokasi}
+              onChange={(e) => setLokasi(e.target.value)}
+              placeholder="KM 12 / Pit / Workshop..."
+              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             />
           </div>
 
           {/* KETERANGAN */}
-          <div className="sm:col-span-3">
+          <div>
             <label
               htmlFor="quick-ket-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
@@ -245,7 +283,7 @@ export function InputBdPanel({
           </div>
 
           {/* STATUS */}
-          <div className="sm:col-span-2">
+          <div>
             <label
               htmlFor="quick-status-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
@@ -258,19 +296,19 @@ export function InputBdPanel({
               onChange={(e) => setStatus(e.target.value as BdStatus)}
               className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
             >
-              {BD_STATUS_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
+              {BD_STATUS_CATALOG.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.code} - {item.label}
                 </option>
               ))}
             </select>
           </div>
 
           {/* Submit */}
-          <div className="sm:col-span-2">
+          <div>
             <button
               type="submit"
-              className="w-full px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="w-full px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Pindah ke BD
             </button>
@@ -292,7 +330,7 @@ export function InputBdPanel({
             type="text"
             value={bdSearch}
             onChange={(e) => setBdSearch(e.target.value)}
-            placeholder="Filter unit BD atau keterangan..."
+            placeholder="Filter unit BD, lokasi, atau keterangan..."
             aria-label="Filter unit BD"
             className="w-full pl-8 pr-3 py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
@@ -306,12 +344,12 @@ export function InputBdPanel({
             id="bd-status-filter"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'ALL' | BdStatus)}
-            className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 max-w-[240px]"
           >
             <option value="ALL">Semua ({bdRecords.length})</option>
-            {BD_STATUS_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt} ({bdRecords.filter((r) => r.status === opt).length})
+            {BD_STATUS_CATALOG.map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.code} - {item.label} ({bdRecords.filter((r) => r.status === item.code).length})
               </option>
             ))}
           </select>
@@ -320,21 +358,22 @@ export function InputBdPanel({
 
       {/* Inline Editable Spreadsheet Table */}
       <div className="flex-1 overflow-auto ops-scroll">
-        <table className="w-full text-left border-collapse min-w-[660px]">
+        <table className="w-full text-left border-collapse min-w-[820px]">
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
               <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
               <th className="py-2 px-2 w-28">UNIT BD</th>
               <th className="py-2 px-2 w-24">JAM BD</th>
+              <th className="py-2 px-2 w-40">POSISI / LOKASI</th>
               <th className="py-2 px-2">KETERANGAN</th>
-              <th className="py-2 px-2 w-40">STATUS</th>
+              <th className="py-2 px-2 w-52">STATUS</th>
               <th className="py-2 pl-2 pr-4 text-right w-32">AKSI</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredBdRecords.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-16 px-4 text-center">
+                <td colSpan={7} className="py-16 px-4 text-center">
                   <div className="max-w-sm mx-auto space-y-2">
                     <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
                       <Wrench className="w-4 h-4" aria-hidden="true" />
@@ -364,12 +403,22 @@ export function InputBdPanel({
                       {rec.unitCode}
                     </td>
                     <td className="py-2 px-2">
-                      <input
-                        type="time"
+                      <Time24Input
                         value={rec.jamBd}
-                        aria-label={`Jam BD ${rec.unitCode}`}
-                        onChange={(e) => onUpdateBd(rec.id, { jamBd: e.target.value })}
+                        ariaLabel={`Jam BD ${rec.unitCode}`}
+                        onChange={(val) => onUpdateBd(rec.id, { jamBd: val })}
                         className="w-full px-1.5 py-1 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="text"
+                        list="bd-location-suggestions"
+                        value={rec.lokasi ?? ''}
+                        aria-label={`Posisi atau lokasi BD ${rec.unitCode}`}
+                        placeholder="Isi posisi / lokasi..."
+                        onChange={(e) => onUpdateBd(rec.id, { lokasi: e.target.value })}
+                        className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
                       />
                     </td>
                     <td className="py-2 px-2">
@@ -391,9 +440,9 @@ export function InputBdPanel({
                         }
                         className={`w-full px-2 py-1 text-xs font-medium rounded border focus:outline-none focus:ring-2 focus:ring-blue-600 cursor-pointer ${stStyle.bg} ${stStyle.text} ${stStyle.border}`}
                       >
-                        {BD_STATUS_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt} className="bg-white text-slate-900">
-                            {opt}
+                        {BD_STATUS_CATALOG.map((item) => (
+                          <option key={item.code} value={item.code} className="bg-white text-slate-900">
+                            {item.code} - {item.label}
                           </option>
                         ))}
                       </select>

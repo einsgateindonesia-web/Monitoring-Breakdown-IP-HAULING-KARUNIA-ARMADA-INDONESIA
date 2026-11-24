@@ -7,8 +7,15 @@ import { PopulationManagerModal } from './components/PopulationManagerModal';
 import { RfuHistoryView } from './components/RfuHistoryView';
 import { TopBar } from './components/TopBar';
 import { UnitRunningPanel } from './components/UnitRunningPanel';
-import { INITIAL_FLEET_UNITS, detectFleetGroup } from './data/initialUnits';
-import { ActiveTab, BdStatus, BreakdownRecord, FleetUnit, RfuHistoryRecord } from './types/fleet';
+import { INITIAL_FLEET_UNITS, detectFleetGroup, normalizeBdStatus } from './data/initialUnits';
+import {
+  ActiveTab,
+  BdStatus,
+  BreakdownRecord,
+  FleetUnit,
+  HourlySlotOverride,
+  RfuHistoryRecord,
+} from './types/fleet';
 import {
   buildWhatsappReport,
   exportBoardCsv,
@@ -16,11 +23,13 @@ import {
   getCurrentDateYYYYMMDD,
   getCurrentTimeHHMM,
 } from './utils/fleetUtils';
+import { getCurrentOperationalShiftDate } from './utils/hourlyShiftUtils';
 
 const STORAGE_KEYS = {
   masterFleet: 'fleetbd_master_units_v1',
   bdRecords: 'fleetbd_active_bd_v1',
   rfuHistory: 'fleetbd_rfu_history_v1',
+  hourlyOverrides: 'fleetbd_hourly_overrides_v1',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -38,11 +47,23 @@ export default function App() {
     loadFromStorage<FleetUnit[]>(STORAGE_KEYS.masterFleet, INITIAL_FLEET_UNITS)
   );
   const [bdRecords, setBdRecords] = useState<BreakdownRecord[]>(() =>
-    loadFromStorage<BreakdownRecord[]>(STORAGE_KEYS.bdRecords, [])
+    loadFromStorage<BreakdownRecord[]>(STORAGE_KEYS.bdRecords, []).map((rec) => ({
+      ...rec,
+      lokasi: rec.lokasi ?? '',
+      status: normalizeBdStatus(rec.status),
+    }))
   );
   const [rfuHistory, setRfuHistory] = useState<RfuHistoryRecord[]>(() =>
-    loadFromStorage<RfuHistoryRecord[]>(STORAGE_KEYS.rfuHistory, [])
+    loadFromStorage<RfuHistoryRecord[]>(STORAGE_KEYS.rfuHistory, []).map((item) => ({
+      ...item,
+      lokasi: item.lokasi ?? '',
+      lastStatus: normalizeBdStatus(item.lastStatus),
+    }))
   );
+  const [hourlyOverrides, setHourlyOverrides] = useState<Record<string, HourlySlotOverride>>(
+    () => loadFromStorage<Record<string, HourlySlotOverride>>(STORAGE_KEYS.hourlyOverrides, {})
+  );
+  const [shiftDate, setShiftDate] = useState<string>(() => getCurrentOperationalShiftDate());
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('board');
   const [modalOpen, setModalOpen] = useState(false);
@@ -75,6 +96,14 @@ export default function App() {
     }
   }, [rfuHistory]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.hourlyOverrides, JSON.stringify(hourlyOverrides));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [hourlyOverrides]);
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
   };
@@ -102,6 +131,7 @@ export default function App() {
   const handleAddBd = (payload: {
     unitCode: string;
     jamBd: string;
+    lokasi: string;
     keterangan: string;
     status: BdStatus;
   }): { ok: boolean; message?: string } => {
@@ -134,6 +164,7 @@ export default function App() {
       fleetGroup: matchedMaster.fleetGroup,
       jamBd: payload.jamBd || getCurrentTimeHHMM(),
       tanggalBd: getCurrentDateYYYYMMDD(),
+      lokasi: payload.lokasi.trim(),
       keterangan: payload.keterangan.trim(),
       status: payload.status,
       updatedAt: new Date().toISOString(),
@@ -146,7 +177,7 @@ export default function App() {
 
   const handleUpdateBd = (
     id: string,
-    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'keterangan' | 'status'>>
+    patch: Partial<Pick<BreakdownRecord, 'jamBd' | 'lokasi' | 'keterangan' | 'status'>>
   ) => {
     setBdRecords((prev) =>
       prev.map((rec) =>
@@ -169,6 +200,7 @@ export default function App() {
       tanggalBd: target.tanggalBd,
       jamRfu: getCurrentTimeHHMM(),
       tanggalRfu: getCurrentDateYYYYMMDD(),
+      lokasi: target.lokasi ?? '',
       keterangan: target.keterangan,
       lastStatus: target.status,
     };
@@ -339,6 +371,95 @@ export default function App() {
     }
   };
 
+  const handleSetHourlyOverride = (slot: {
+    shiftDate: string;
+    slotIndex: number;
+    totalPopulasi: number;
+    bdCount: number;
+  }) => {
+    const key = `${slot.shiftDate}__${slot.slotIndex}`;
+    setHourlyOverrides((prev) => ({
+      ...prev,
+      [key]: {
+        key,
+        shiftDate: slot.shiftDate,
+        slotIndex: slot.slotIndex,
+        totalPopulasi: slot.totalPopulasi,
+        bdCount: slot.bdCount,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const handleClearHourlyOverride = (key: string) => {
+    setHourlyOverrides((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleUpdateRfuHistory = (
+    id: string,
+    patch: Partial<Omit<RfuHistoryRecord, 'id' | 'fleetGroup'>>
+  ) => {
+    setRfuHistory((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const nextCode =
+          patch.unitCode !== undefined
+            ? patch.unitCode.trim().toUpperCase().replace(/\s+/g, ' ') || item.unitCode
+            : item.unitCode;
+        return {
+          ...item,
+          ...patch,
+          unitCode: nextCode,
+          fleetGroup: detectFleetGroup(nextCode),
+        };
+      })
+    );
+    showToast('Catatan riwayat RFU diperbarui.');
+  };
+
+  const handleAddRfuHistory = (payload: {
+    unitCode: string;
+    tanggalBd: string;
+    jamBd: string;
+    tanggalRfu: string;
+    jamRfu: string;
+    lokasi: string;
+    keterangan: string;
+    lastStatus: BdStatus;
+  }): { ok: boolean; message?: string } => {
+    const code = payload.unitCode.trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!code) {
+      return { ok: false, message: 'Kode unit tidak boleh kosong.' };
+    }
+    const newEntry: RfuHistoryRecord = {
+      id: `rfu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      unitCode: code,
+      fleetGroup: detectFleetGroup(code),
+      tanggalBd: payload.tanggalBd || getCurrentDateYYYYMMDD(),
+      jamBd: payload.jamBd || getCurrentTimeHHMM(),
+      tanggalRfu: payload.tanggalRfu || getCurrentDateYYYYMMDD(),
+      jamRfu: payload.jamRfu || getCurrentTimeHHMM(),
+      lokasi: payload.lokasi.trim(),
+      keterangan: payload.keterangan.trim(),
+      lastStatus: payload.lastStatus,
+    };
+    setRfuHistory((prev) => [newEntry, ...prev]);
+    showToast(`Catatan RFU untuk ${code} ditambahkan.`);
+    return { ok: true };
+  };
+
+  const handleDeleteRfuHistoryItem = (id: string) => {
+    const target = rfuHistory.find((r) => r.id === id);
+    setRfuHistory((prev) => prev.filter((r) => r.id !== id));
+    if (target) {
+      showToast(`Catatan RFU ${target.unitCode} dihapus.`);
+    }
+  };
+
   const handleOpenModalForUnit = (unitCode: string | null) => {
     setModalUnitCode(unitCode);
     setModalOpen(true);
@@ -396,7 +517,13 @@ export default function App() {
           <AreaDashboardBdView
             runningUnits={runningUnits}
             bdRecords={bdRecords}
+            rfuHistory={rfuHistory}
             totalFleetCount={masterUnits.length}
+            shiftDate={shiftDate}
+            onChangeShiftDate={setShiftDate}
+            hourlyOverrides={hourlyOverrides}
+            onSetHourlyOverride={handleSetHourlyOverride}
+            onClearHourlyOverride={handleClearHourlyOverride}
             onCopyWaReport={handleCopyWaReport}
             onExportCsv={() => exportBoardCsv(runningUnits, bdRecords)}
             copiedWa={copiedWa}
@@ -407,8 +534,15 @@ export default function App() {
         {activeTab === 'riwayat' && (
           <RfuHistoryView
             history={rfuHistory}
+            masterUnits={masterUnits}
+            onUpdateItem={handleUpdateRfuHistory}
+            onAddItem={handleAddRfuHistory}
+            onDeleteItem={handleDeleteRfuHistoryItem}
             onExportCsv={() => exportRfuHistoryCsv(rfuHistory)}
-            onClearHistory={() => setRfuHistory([])}
+            onClearHistory={() => {
+              setRfuHistory([]);
+              showToast('Seluruh log riwayat RFU dibersihkan.');
+            }}
             onBackToBoard={() => setActiveTab('board')}
           />
         )}

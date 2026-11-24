@@ -1,3 +1,4 @@
+import { formatBdStatus } from '../data/initialUnits';
 import { BreakdownRecord, FleetUnit, RfuHistoryRecord } from '../types/fleet';
 
 export function getCurrentTimeHHMM(): string {
@@ -67,8 +68,11 @@ export function buildWhatsappReport(
     lines.push('Tidak ada unit BD (100% Running).');
   } else {
     bdRecords.forEach((rec, idx) => {
+      const lok = rec.lokasi?.trim() ? rec.lokasi.trim() : '-';
       const ket = rec.keterangan.trim() ? rec.keterangan.trim() : '-';
-      lines.push(`${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} | ${rec.status} | Ket: ${ket}`);
+      lines.push(
+        `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} | Posisi: ${lok} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
+      );
     });
   }
 
@@ -93,6 +97,7 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
     'UNIT BD',
     'JAM BD',
     'TANGGAL BD',
+    'POSISI / LOKASI BD',
     'KETERANGAN',
     'STATUS',
   ];
@@ -111,8 +116,9 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
         bd ? bd.unitCode : '',
         bd ? bd.jamBd : '',
         bd ? bd.tanggalBd : '',
+        bd ? bd.lokasi ?? '' : '',
         bd ? bd.keterangan : '',
-        bd ? bd.status : '',
+        bd ? formatBdStatus(bd.status) : '',
       ]
         .map(escapeCsvCell)
         .join(',')
@@ -138,6 +144,7 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
     'JAM BD',
     'TANGGAL RFU',
     'JAM RFU',
+    'LOKASI',
     'KETERANGAN',
     'STATUS TERAKHIR',
   ];
@@ -153,8 +160,9 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
         h.jamBd,
         h.tanggalRfu,
         h.jamRfu,
+        h.lokasi ?? '',
         h.keterangan,
-        h.lastStatus,
+        formatBdStatus(h.lastStatus),
       ]
         .map(escapeCsvCell)
         .join(',')

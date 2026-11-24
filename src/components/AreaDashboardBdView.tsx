@@ -1,12 +1,30 @@
 import { Check, Copy, Download } from 'lucide-react';
-import { BD_STATUS_OPTIONS, BD_STATUS_STYLES } from '../data/initialUnits';
-import { BreakdownRecord, FleetGroup, FleetUnit } from '../types/fleet';
+import { BD_STATUS_CATALOG, BD_STATUS_STYLES } from '../data/initialUnits';
+import {
+  BreakdownRecord,
+  FleetGroup,
+  FleetUnit,
+  HourlySlotOverride,
+  RfuHistoryRecord,
+} from '../types/fleet';
 import { buildWhatsappReport } from '../utils/fleetUtils';
+import { HourlyPaMonitoringSection } from './HourlyPaMonitoringSection';
 
 interface AreaDashboardBdViewProps {
   runningUnits: FleetUnit[];
   bdRecords: BreakdownRecord[];
+  rfuHistory: RfuHistoryRecord[];
   totalFleetCount: number;
+  shiftDate: string;
+  onChangeShiftDate: (date: string) => void;
+  hourlyOverrides: Record<string, HourlySlotOverride>;
+  onSetHourlyOverride: (slot: {
+    shiftDate: string;
+    slotIndex: number;
+    totalPopulasi: number;
+    bdCount: number;
+  }) => void;
+  onClearHourlyOverride: (key: string) => void;
   onCopyWaReport: () => void;
   onExportCsv: () => void;
   copiedWa: boolean;
@@ -16,7 +34,13 @@ interface AreaDashboardBdViewProps {
 export function AreaDashboardBdView({
   runningUnits,
   bdRecords,
+  rfuHistory,
   totalFleetCount,
+  shiftDate,
+  onChangeShiftDate,
+  hourlyOverrides,
+  onSetHourlyOverride,
+  onClearHourlyOverride,
   onCopyWaReport,
   onExportCsv,
   copiedWa,
@@ -33,15 +57,34 @@ export function AreaDashboardBdView({
     })
     .filter((s) => s.total > 0);
 
-  const statusBreakdown = BD_STATUS_OPTIONS.map((st) => {
-    const items = bdRecords.filter((b) => b.status === st);
+  const statusBreakdown = BD_STATUS_CATALOG.map((meta) => {
+    const items = bdRecords.filter((b) => b.status === meta.code);
     return {
-      status: st,
+      no: meta.no,
+      code: meta.code,
+      label: meta.label,
       count: items.length,
       units: items.map((i) => i.unitCode),
       pct: bdRecords.length > 0 ? (items.length / bdRecords.length) * 100 : 0,
     };
   });
+
+  const positionBreakdown = (() => {
+    const map = new Map<string, BreakdownRecord[]>();
+    bdRecords.forEach((rec) => {
+      const key = rec.lokasi?.trim() ? rec.lokasi.trim() : 'Belum Diisi';
+      const existing = map.get(key) ?? [];
+      existing.push(rec);
+      map.set(key, existing);
+    });
+    return Array.from(map.entries())
+      .map(([posisi, items]) => ({
+        posisi,
+        count: items.length,
+        units: items.map((i) => `${i.unitCode} (${i.jamBd})`),
+      }))
+      .sort((a, b) => b.count - a.count);
+  })();
 
   const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount);
 
@@ -157,32 +200,89 @@ export function AreaDashboardBdView({
                 Total {bdRecords.length} unit BD
               </span>
             </div>
-            <div className="divide-y divide-slate-100">
-              {statusBreakdown.map((item) => {
-                const st = BD_STATUS_STYLES[item.status];
-                return (
-                  <div key={item.status} className="px-4 py-3 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className={`font-semibold ${st.text}`}>{item.status}</span>
-                      <span className="font-mono tabular-nums text-slate-700 font-semibold">
-                        {item.count} unit
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-100 rounded-sm overflow-hidden">
-                      <div
-                        className={`h-full ${st.bar} transition-all duration-200`}
-                        style={{ width: `${item.pct}%` }}
-                      />
-                    </div>
-                    {item.units.length > 0 && (
-                      <p className="text-[11px] font-mono text-slate-500 leading-relaxed">
-                        {item.units.join(' · ')}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="border-b border-slate-200 text-[11px] font-semibold text-slate-500 bg-slate-50/40">
+                  <tr>
+                    <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
+                    <th className="py-2 px-2 w-16 font-mono">CODE</th>
+                    <th className="py-2 px-2">DISTRIBUSI STATUS UNIT BD</th>
+                    <th className="py-2 px-2 w-20 text-right">UNIT</th>
+                    <th className="py-2 pl-2 pr-4 w-28">PROPORSI</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {statusBreakdown.map((item) => {
+                    const st = BD_STATUS_STYLES[item.code];
+                    return (
+                      <tr key={item.code} className="hover:bg-slate-50/80">
+                        <td className="py-2 pl-4 pr-2 font-mono tabular-nums text-slate-400">
+                          {item.no}
+                        </td>
+                        <td className="py-2 px-2 font-mono font-bold">
+                          <span className={st.text}>{item.code}</span>
+                        </td>
+                        <td className="py-2 px-2">
+                          <p className="font-medium text-slate-900">{item.label}</p>
+                          {item.units.length > 0 && (
+                            <p className="text-[11px] font-mono text-slate-500 mt-0.5 leading-relaxed">
+                              {item.units.join(' · ')}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono tabular-nums font-semibold text-slate-900">
+                          {item.count}
+                        </td>
+                        <td className="py-2 pl-2 pr-4">
+                          <div className="w-full h-1.5 bg-slate-100 rounded-sm overflow-hidden">
+                            <div
+                              className={`h-full ${st.bar} transition-all duration-200`}
+                              style={{ width: `${item.pct}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+          </section>
+
+          {/* Posisi / Lokasi Unit BD Breakdown */}
+          <section className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Sebaran Posisi / Lokasi Unit BD
+              </h2>
+              <span className="text-xs font-mono tabular-nums text-slate-500">
+                {positionBreakdown.length} titik lokasi
+              </span>
+            </div>
+            {positionBreakdown.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-slate-500">
+                Belum ada unit BD aktif saat ini.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {positionBreakdown.map((loc) => (
+                  <div
+                    key={loc.posisi}
+                    className="px-4 py-2.5 flex items-start justify-between gap-4 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900">{loc.posisi}</p>
+                      <p className="text-[11px] font-mono text-slate-500 mt-0.5 leading-relaxed">
+                        {loc.units.join(' · ')}
+                      </p>
+                    </div>
+                    <span className="font-mono tabular-nums font-semibold text-red-700 shrink-0">
+                      {loc.count} unit
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 
@@ -210,6 +310,18 @@ export function AreaDashboardBdView({
           </div>
         </section>
       </div>
+
+      {/* Hourly PA, Total Population & BD Monitoring (06:00 Shift 1 - 06:00 Shift 2) */}
+      <HourlyPaMonitoringSection
+        shiftDate={shiftDate}
+        onChangeShiftDate={onChangeShiftDate}
+        totalPopulasi={totalFleetCount}
+        bdRecords={bdRecords}
+        rfuHistory={rfuHistory}
+        overrides={hourlyOverrides}
+        onSetOverride={onSetHourlyOverride}
+        onClearOverride={onClearHourlyOverride}
+      />
     </div>
   );
 }

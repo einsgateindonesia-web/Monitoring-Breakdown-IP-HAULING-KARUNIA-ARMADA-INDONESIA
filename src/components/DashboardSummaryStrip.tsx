@@ -42,7 +42,7 @@ export function DashboardSummaryStrip({
           onClick={onOpenDashboardTab}
           className="text-xs font-medium text-blue-700 hover:text-blue-800 hover:underline cursor-pointer whitespace-nowrap shrink-0"
         >
-          Lihat detail &amp; laporan WA →
+          Lihat Dashboard BD &amp; PA Per Jam →
         </button>
       </div>
 

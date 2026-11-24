@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { BD_STATUS_OPTIONS } from '../data/initialUnits';
+import { BD_LOCATION_SUGGESTIONS, BD_STATUS_CATALOG } from '../data/initialUnits';
 import { BdStatus, FleetUnit } from '../types/fleet';
 import { getCurrentTimeHHMM } from '../utils/fleetUtils';
+import { Time24Input } from './Time24Input';
 
 interface InputBdModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface InputBdModalProps {
   onSubmit: (payload: {
     unitCode: string;
     jamBd: string;
+    lokasi: string;
     keterangan: string;
     status: BdStatus;
   }) => { ok: boolean; message?: string };
@@ -26,16 +28,18 @@ export function InputBdModal({
 }: InputBdModalProps) {
   const [unitCode, setUnitCode] = useState('');
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
+  const [lokasi, setLokasi] = useState('');
   const [keterangan, setKeterangan] = useState('');
-  const [status, setStatus] = useState<BdStatus>('Diagnosa');
+  const [status, setStatus] = useState<BdStatus>('B0');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setUnitCode(initialUnitCode ?? runningUnits[0]?.code ?? '');
       setJamBd(getCurrentTimeHHMM());
+      setLokasi('');
       setKeterangan('');
-      setStatus('Diagnosa');
+      setStatus('B0');
       setError('');
     }
   }, [isOpen, initialUnitCode, runningUnits]);
@@ -47,6 +51,7 @@ export function InputBdModal({
     const res = onSubmit({
       unitCode,
       jamBd: jamBd || getCurrentTimeHHMM(),
+      lokasi,
       keterangan,
       status,
     });
@@ -85,6 +90,12 @@ export function InputBdModal({
         </div>
 
         <form onSubmit={handleFormSubmit} className="p-5 space-y-4">
+          <datalist id="modal-bd-location-suggestions">
+            {BD_LOCATION_SUGGESTIONS.map((loc) => (
+              <option key={loc} value={loc} />
+            ))}
+          </datalist>
+
           <div>
             <label
               htmlFor="modal-unit-select"
@@ -121,13 +132,12 @@ export function InputBdModal({
                 htmlFor="modal-jam-bd"
                 className="block text-xs font-semibold text-slate-700 mb-1"
               >
-                JAM BD
+                JAM BD (Format 24:00)
               </label>
-              <input
+              <Time24Input
                 id="modal-jam-bd"
-                type="time"
                 value={jamBd}
-                onChange={(e) => setJamBd(e.target.value)}
+                onChange={setJamBd}
                 required
                 className="w-full px-3 py-2 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
@@ -146,13 +156,32 @@ export function InputBdModal({
                 onChange={(e) => setStatus(e.target.value as BdStatus)}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
-                {BD_STATUS_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
+                {BD_STATUS_CATALOG.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.code} - {item.label}
                   </option>
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="modal-lokasi-bd"
+              className="block text-xs font-semibold text-slate-700 mb-1"
+            >
+              POSISI / LOKASI UNIT SAAT BD
+            </label>
+            <input
+              id="modal-lokasi-bd"
+              type="text"
+              list="modal-bd-location-suggestions"
+              value={lokasi}
+              onChange={(e) => setLokasi(e.target.value)}
+              placeholder="Contoh: KM 12 Hauling Road, Pit / Front Loading, Workshop IP..."
+              autoFocus
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
           </div>
 
           <div>
@@ -167,8 +196,7 @@ export function InputBdModal({
               rows={3}
               value={keterangan}
               onChange={(e) => setKeterangan(e.target.value)}
-              placeholder="Contoh: Hose hydraulic bocor, tunggu mekanik di pit..."
-              autoFocus
+              placeholder="Contoh: Hose hydraulic bocor, tunggu mekanik..."
               className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>

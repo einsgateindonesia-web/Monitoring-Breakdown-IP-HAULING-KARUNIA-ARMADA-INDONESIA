@@ -94,60 +94,150 @@ export const INITIAL_FLEET_UNITS: FleetUnit[] = RAW_INITIAL_UNIT_CODES.map((code
   orderIndex: index + 1,
 }));
 
-export const BD_STATUS_OPTIONS: BdStatus[] = [
-  'Diagnosa',
-  'In Progress',
-  'Waiting Part',
-  'Waiting Mechanic',
-  'Vendor / Subkon',
-  'Scheduled PM',
-  'Hold',
+export const BD_LOCATION_SUGGESTIONS: string[] = [
+  'Workshop IP',
+  'Hauling Road',
+  'KM 0',
+  'KM 5',
+  'KM 10',
+  'KM 15',
+  'KM 20',
+  'Pit / Front Loading',
+  'ROM / Stockpile',
+  'Crusher / Hopper',
+  'Jetty / Port',
+  'Fuel Station',
+  'Parkiran / Staging',
 ];
+
+export interface BdStatusMeta {
+  no: number;
+  code: BdStatus;
+  label: string;
+}
+
+export const BD_STATUS_CATALOG: BdStatusMeta[] = [
+  { no: 1, code: 'BS', label: 'Scheduled Maintenance' },
+  { no: 2, code: 'B0', label: 'BUS (On Progress)' },
+  { no: 3, code: 'B1', label: 'BUS (Waiting Part)' },
+  { no: 4, code: 'B2', label: 'BUS (Waiting Man power)' },
+  { no: 5, code: 'B3', label: 'BUS (Warranty Dealer)' },
+  { no: 6, code: 'B4', label: 'BUS (Accident, Fiss Opt, Fiss Apl)' },
+  { no: 7, code: 'B5', label: 'BUS (Breakdown Tyre)' },
+  { no: 8, code: 'B6', label: 'BUS (Out Site Repair)' },
+  { no: 9, code: 'B7', label: 'BUS (Waiting Transportation)' },
+  { no: 10, code: 'B8', label: 'BUS (Waiting Vessel)' },
+  { no: 11, code: 'B9', label: 'BUS (Waiting Tool)' },
+  { no: 12, code: 'B10', label: 'BUS (Bad Weather)' },
+];
+
+export const BD_STATUS_OPTIONS: BdStatus[] = BD_STATUS_CATALOG.map((item) => item.code);
+
+export const BD_STATUS_LABELS: Record<BdStatus, string> = BD_STATUS_CATALOG.reduce(
+  (acc, item) => {
+    acc[item.code] = item.label;
+    return acc;
+  },
+  {} as Record<BdStatus, string>
+);
+
+export function formatBdStatus(code: BdStatus): string {
+  const label = BD_STATUS_LABELS[code];
+  return label ? `${code} · ${label}` : code;
+}
+
+const LEGACY_STATUS_MAP: Record<string, BdStatus> = {
+  'Scheduled PM': 'BS',
+  Diagnosa: 'B0',
+  'In Progress': 'B0',
+  'Waiting Part': 'B1',
+  'Waiting Mechanic': 'B2',
+  'Vendor / Subkon': 'B6',
+  Hold: 'B10',
+};
+
+export function normalizeBdStatus(raw: string | undefined): BdStatus {
+  if (!raw) return 'B0';
+  if ((BD_STATUS_OPTIONS as string[]).includes(raw)) {
+    return raw as BdStatus;
+  }
+  return LEGACY_STATUS_MAP[raw] ?? 'B0';
+}
 
 export const BD_STATUS_STYLES: Record<
   BdStatus,
   { text: string; bg: string; border: string; bar: string }
 > = {
-  Diagnosa: {
-    text: 'text-amber-800',
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
-    bar: 'bg-amber-500',
-  },
-  'In Progress': {
-    text: 'text-blue-800',
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    bar: 'bg-blue-600',
-  },
-  'Waiting Part': {
-    text: 'text-red-800',
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    bar: 'bg-red-600',
-  },
-  'Waiting Mechanic': {
-    text: 'text-orange-800',
-    bg: 'bg-orange-50',
-    border: 'border-orange-200',
-    bar: 'bg-orange-500',
-  },
-  'Vendor / Subkon': {
-    text: 'text-slate-800',
-    bg: 'bg-slate-100',
-    border: 'border-slate-300',
-    bar: 'bg-slate-600',
-  },
-  'Scheduled PM': {
+  BS: {
     text: 'text-teal-800',
     bg: 'bg-teal-50',
     border: 'border-teal-200',
     bar: 'bg-teal-600',
   },
-  Hold: {
+  B0: {
+    text: 'text-blue-800',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    bar: 'bg-blue-600',
+  },
+  B1: {
+    text: 'text-red-800',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    bar: 'bg-red-600',
+  },
+  B2: {
+    text: 'text-orange-800',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    bar: 'bg-orange-500',
+  },
+  B3: {
+    text: 'text-indigo-800',
+    bg: 'bg-indigo-50',
+    border: 'border-indigo-200',
+    bar: 'bg-indigo-600',
+  },
+  B4: {
     text: 'text-rose-900',
     bg: 'bg-rose-50',
     border: 'border-rose-200',
     bar: 'bg-rose-700',
+  },
+  B5: {
+    text: 'text-amber-800',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    bar: 'bg-amber-500',
+  },
+  B6: {
+    text: 'text-slate-800',
+    bg: 'bg-slate-100',
+    border: 'border-slate-300',
+    bar: 'bg-slate-600',
+  },
+  B7: {
+    text: 'text-amber-900',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    bar: 'bg-amber-600',
+  },
+  B8: {
+    text: 'text-cyan-800',
+    bg: 'bg-cyan-50',
+    border: 'border-cyan-200',
+    bar: 'bg-cyan-600',
+  },
+  B9: {
+    text: 'text-orange-900',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    bar: 'bg-orange-600',
+  },
+  B10: {
+    text: 'text-slate-700',
+    bg: 'bg-slate-100',
+    border: 'border-slate-300',
+    bar: 'bg-slate-500',
   },
 };
