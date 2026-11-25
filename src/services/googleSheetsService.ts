@@ -116,7 +116,6 @@ export async function createOfficialMasterSpreadsheet(
       body: JSON.stringify({
         properties: {
           title,
-          locale: 'id_ID',
         },
         sheets: SHEET_TABS.map((tabTitle, index) => ({
           properties: {
