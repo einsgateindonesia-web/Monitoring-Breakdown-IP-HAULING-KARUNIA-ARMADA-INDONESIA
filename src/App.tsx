@@ -1,6 +1,16 @@
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { Unsubscribe } from 'firebase/firestore';
-import { ArrowDownToLine, Cloud, CloudUpload, FileSpreadsheet, History, LogOut, Users } from 'lucide-react';
+import { onSnapshotsInSync, Unsubscribe } from 'firebase/firestore';
+import {
+  ArrowDownToLine,
+  Cloud,
+  CloudUpload,
+  FileSpreadsheet,
+  History,
+  LogOut,
+  RefreshCw,
+  Users,
+  WifiOff,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AreaDashboardBdView } from './components/AreaDashboardBdView';
 import { AuditLogModal } from './components/AuditLogModal';
@@ -32,9 +42,11 @@ import {
 } from './data/initialUnits';
 import {
   auth,
+  db,
   DEFAULT_WORKSPACE_ID,
   getCachedWorkspaceAccessToken,
   googleProvider,
+  isTransientNetworkError,
   sanitizeDisplayName,
   setCachedWorkspaceAccessToken,
 } from './firebase';
@@ -120,7 +132,15 @@ const STORAGE_KEYS = {
   hourlyOverrides: 'fleetbd_hourly_overrides_v1',
   migratedFlag: 'fleetbd_cloud_migrated_v1',
   autoCheckSheets: 'fleetbd_auto_check_sheets_v1',
+  lastSession: 'fleetbd_last_session_v1',
 };
+
+interface CachedSessionSnapshot {
+  uid: string;
+  workspaceId: string;
+  workspaceInfo: WorkspaceInfo | null;
+  membership: WorkspaceMemberInfo;
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -198,6 +218,14 @@ export default function App() {
   );
   const [sheetPullPreview, setSheetPullPreview] = useState<SheetPullDiffPreview | null>(null);
   const [oauthTokenSignal, setOauthTokenSignal] = useState<number>(0);
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [hasPendingCloudWrites, setHasPendingCloudWrites] = useState<boolean>(false);
+  const [offlineBannerDismissed, setOfflineBannerDismissed] = useState<boolean>(false);
+  const wasOfflineOrPendingRef = useRef<boolean>(false);
+  const fleetPendingRef = useRef<boolean>(false);
+  const activeBdPendingRef = useRef<boolean>(false);
   const [copiedWa, setCopiedWa] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [localMigrationDismissed, setLocalMigrationDismissed] = useState<boolean>(() =>
@@ -288,6 +316,11 @@ export default function App() {
 
   const runCloudTask = useCallback((task: Promise<unknown>) => {
     task.catch((err) => {
+      if (isTransientNetworkError(err)) {
+        setHasPendingCloudWrites(true);
+        wasOfflineOrPendingRef.current = true;
+        return;
+      }
       setSyncError(err instanceof Error ? err : new Error(String(err)));
     });
   }, []);
@@ -326,6 +359,25 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnline = () => {
+      setIsBrowserOnline(true);
+      setOfflineBannerDismissed(false);
+    };
+    const handleOffline = () => {
+      setIsBrowserOnline(false);
+      setOfflineBannerDismissed(false);
+      wasOfflineOrPendingRef.current = true;
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Auth listener (registered once per workspaceId)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -338,6 +390,11 @@ export default function App() {
         setMembership(null);
         setWorkspaceInfo(null);
         setSheetConfig(null);
+        try {
+          localStorage.removeItem(STORAGE_KEYS.lastSession);
+        } catch {
+          // Ignore storage error
+        }
         setWorkspaceLoading(false);
         setAuthReady(true);
         return;
@@ -351,6 +408,17 @@ export default function App() {
           const res = await ensureWorkspaceForBootstrappedAdmin(user, workspaceId);
           setWorkspaceInfo(res.workspace);
           setMembership(res.membership);
+          try {
+            const snap: CachedSessionSnapshot = {
+              uid: user.uid,
+              workspaceId,
+              workspaceInfo: res.workspace,
+              membership: res.membership,
+            };
+            localStorage.setItem(STORAGE_KEYS.lastSession, JSON.stringify(snap));
+          } catch {
+            // Ignore storage error
+          }
         } else {
           let existingMember = await fetchMembership(workspaceId, user.uid);
           const inviteToUse = pendingInviteRef.current;
@@ -373,13 +441,40 @@ export default function App() {
             setMembership(existingMember);
             const ws = await fetchWorkspaceInfo(workspaceId);
             setWorkspaceInfo(ws);
+            try {
+              const snap: CachedSessionSnapshot = {
+                uid: user.uid,
+                workspaceId,
+                workspaceInfo: ws,
+                membership: existingMember,
+              };
+              localStorage.setItem(STORAGE_KEYS.lastSession, JSON.stringify(snap));
+            } catch {
+              // Ignore storage error
+            }
           } else {
             setMembership(null);
             setWorkspaceInfo(null);
           }
         }
       } catch (err) {
-        setSyncError(err instanceof Error ? err : new Error(String(err)));
+        if (isTransientNetworkError(err) || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          const cached = loadFromStorage<CachedSessionSnapshot | null>(
+            STORAGE_KEYS.lastSession,
+            null
+          );
+          if (cached && cached.uid === user.uid && cached.workspaceId === workspaceId) {
+            setWorkspaceInfo(cached.workspaceInfo);
+            setMembership(cached.membership);
+            wasOfflineOrPendingRef.current = true;
+          } else {
+            setAuthError(
+              'Koneksi internet terputus saat memuat data sesi. Periksa sinyal lalu muat ulang halaman.'
+            );
+          }
+        } else {
+          setSyncError(err instanceof Error ? err : new Error(String(err)));
+        }
       } finally {
         setWorkspaceLoading(false);
         setSigningIn(false);
@@ -394,16 +489,28 @@ export default function App() {
   useEffect(() => {
     if (!authReady || !currentUser || !membership) return;
 
+    const updatePendingState = () => {
+      const pending = fleetPendingRef.current || activeBdPendingRef.current;
+      setHasPendingCloudWrites(pending);
+      if (pending) {
+        wasOfflineOrPendingRef.current = true;
+      }
+    };
+
     const unsubFleet = subscribeBoardFleet(workspaceId, (units, meta) => {
       if (units.length > 0) {
         setMasterUnits(units);
       }
       if (meta.updatedByName) setLastEditorName(meta.updatedByName);
+      fleetPendingRef.current = Boolean(meta.hasPendingWrites);
+      updatePendingState();
     });
 
     const unsubBd = subscribeBoardActiveBd(workspaceId, (records, meta) => {
       setBdRecords(records);
       if (meta.updatedByName) setLastEditorName(meta.updatedByName);
+      activeBdPendingRef.current = Boolean(meta.hasPendingWrites);
+      updatePendingState();
     });
 
     const unsubMeta = subscribeBoardMeta(workspaceId, (meta) => {
@@ -418,14 +525,30 @@ export default function App() {
       setSheetConfig(cfg);
     });
 
+    const unsubInSync = onSnapshotsInSync(db, () => {
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.onLine &&
+        !fleetPendingRef.current &&
+        !activeBdPendingRef.current
+      ) {
+        setHasPendingCloudWrites(false);
+        if (wasOfflineOrPendingRef.current) {
+          wasOfflineOrPendingRef.current = false;
+          showToast('Koneksi pulih — seluruh perubahan tersinkron ke Cloud.');
+        }
+      }
+    });
+
     return () => {
       unsubFleet();
       unsubBd();
       unsubMeta();
       unsubAudit();
       unsubSheetConfig();
+      unsubInSync();
     };
-  }, [authReady, currentUser, membership, workspaceId]);
+  }, [authReady, currentUser, membership, workspaceId, showToast]);
 
   // Real-time Monthly RFU & Hourly Shards Subscriptions
   const rfuSubsRef = useRef<Map<string, Unsubscribe>>(new Map());
@@ -1843,10 +1966,36 @@ export default function App() {
 
       <main className="no-print flex-1 max-w-[1680px] w-full mx-auto px-3 sm:px-5 pt-3 pb-20 sm:py-4 md:pb-5 space-y-3 sm:space-y-4">
         {/* Compact Online Team Sync Strip (Keeps TopBar cleanly 3-zone) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3 sm:px-3.5 py-2.5 sm:py-2 bg-white border border-slate-200 rounded-md text-xs">
+        <div
+          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3 sm:px-3.5 py-2.5 sm:py-2 border rounded-md text-xs ${
+            !isBrowserOnline
+              ? 'bg-red-50/70 border-red-200'
+              : hasPendingCloudWrites
+              ? 'bg-amber-50/70 border-amber-200'
+              : 'bg-white border-slate-200'
+          }`}
+        >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-600">
-            <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
-            <span className="font-semibold text-slate-900">Mode Online Aktif</span>
+            {!isBrowserOnline ? (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-red-600 shrink-0" aria-hidden="true" />
+                <span className="font-semibold text-red-800">
+                  Mode Offline · Disimpan Lokal
+                </span>
+              </>
+            ) : hasPendingCloudWrites ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-amber-700 animate-spin shrink-0" aria-hidden="true" />
+                <span className="font-semibold text-amber-900">
+                  Menyinkronkan Perubahan Lokal ke Cloud...
+                </span>
+              </>
+            ) : (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+                <span className="font-semibold text-slate-900">Mode Online Aktif</span>
+              </>
+            )}
             <span aria-hidden="true">·</span>
             <span>
               Masuk sebagai{' '}
@@ -1918,6 +2067,28 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Non-intrusive offline / queued-sync safety banner */}
+        {!isBrowserOnline && !offlineBannerDismissed && (
+          <div
+            role="status"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 bg-red-50 border border-red-200 rounded-md text-xs text-red-950"
+          >
+            <div className="flex items-start sm:items-center gap-2 min-w-0">
+              <WifiOff className="w-4 h-4 text-red-600 shrink-0 mt-0.5 sm:mt-0" aria-hidden="true" />
+              <p className="min-w-0 leading-relaxed">
+                <strong>Koneksi internet sedang terputus.</strong> Anda tetap bisa menginput, mengubah status, dan menandai RFU — semua perubahan disimpan aman di perangkat dan otomatis terkirim ke tim saat internet kembali.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOfflineBannerDismissed(true)}
+              className="self-end sm:self-center px-2.5 py-1 text-xs font-medium text-red-800 bg-white hover:bg-red-100 border border-red-200 rounded cursor-pointer whitespace-nowrap shrink-0"
+            >
+              Mengerti
+            </button>
+          </div>
+        )}
 
         {/* Non-intrusive banner when periodic Spreadsheet inspection detects changes */}
         {sheetConfig && sheetPullPreview && sheetPullPreview.totalChanges > 0 && (

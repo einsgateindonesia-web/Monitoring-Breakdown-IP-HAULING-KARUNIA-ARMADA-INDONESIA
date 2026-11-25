@@ -1,10 +1,64 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import { BD_LOCATION_SUGGESTIONS, BD_STATUS_CATALOG } from '../data/initialUnits';
 import { BdStatus, FleetUnit } from '../types/fleet';
 import { getCurrentTimeHHMM } from '../utils/fleetUtils';
 import { StackedMrEditor } from './MrListInput';
 import { Time24Input } from './Time24Input';
+
+const MODAL_DRAFT_KEY = 'fleetbd_draft_input_bd_modal_v1';
+
+interface InputBdDraft {
+  unitCode: string;
+  jamBd: string;
+  lokasi: string;
+  mrNumbers: string[];
+  partName: string;
+  keterangan: string;
+  status: BdStatus;
+  picMekanik: string;
+  etr: string;
+}
+
+function loadModalDraft(): InputBdDraft | null {
+  try {
+    const raw = localStorage.getItem(MODAL_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<InputBdDraft>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      unitCode: String(parsed.unitCode ?? ''),
+      jamBd: String(parsed.jamBd ?? ''),
+      lokasi: String(parsed.lokasi ?? ''),
+      mrNumbers: Array.isArray(parsed.mrNumbers)
+        ? parsed.mrNumbers.filter((x): x is string => typeof x === 'string')
+        : [],
+      partName: String(parsed.partName ?? ''),
+      keterangan: String(parsed.keterangan ?? ''),
+      status: (parsed.status as BdStatus) || 'B0',
+      picMekanik: String(parsed.picMekanik ?? ''),
+      etr: String(parsed.etr ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveModalDraft(draft: InputBdDraft): void {
+  try {
+    localStorage.setItem(MODAL_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function clearModalDraft(): void {
+  try {
+    localStorage.removeItem(MODAL_DRAFT_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 interface InputBdModalProps {
   isOpen: boolean;
@@ -41,23 +95,115 @@ export function InputBdModal({
   const [picMekanik, setPicMekanik] = useState('');
   const [etr, setEtr] = useState('');
   const [error, setError] = useState('');
+  const [restoredDraftNotice, setRestoredDraftNotice] = useState(false);
+  const [otherUnitDraft, setOtherUnitDraft] = useState<InputBdDraft | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setUnitCode(initialUnitCode ?? runningUnits[0]?.code ?? '');
-      setJamBd(getCurrentTimeHHMM());
-      setLokasi('');
-      setMrNumbers([]);
-      setPartName('');
-      setKeterangan('');
-      setStatus('B0');
-      setPicMekanik('');
-      setEtr('');
+    if (!isOpen) return;
+    const saved = loadModalDraft();
+    const hasMeaningfulContent = Boolean(
+      saved &&
+        (saved.lokasi.trim() ||
+          saved.partName.trim() ||
+          saved.keterangan.trim() ||
+          saved.mrNumbers.length > 0 ||
+          saved.picMekanik.trim() ||
+          saved.etr.trim() ||
+          saved.status !== 'B0')
+    );
+
+    if (saved && hasMeaningfulContent && (!initialUnitCode || saved.unitCode === initialUnitCode)) {
+      const validSavedUnit = runningUnits.some((u) => u.code === saved.unitCode);
+      setUnitCode(validSavedUnit ? saved.unitCode : initialUnitCode ?? runningUnits[0]?.code ?? '');
+      setJamBd(saved.jamBd || getCurrentTimeHHMM());
+      setLokasi(saved.lokasi);
+      setMrNumbers(saved.mrNumbers);
+      setPartName(saved.partName);
+      setKeterangan(saved.keterangan);
+      setStatus(saved.status);
+      setPicMekanik(saved.picMekanik);
+      setEtr(saved.etr);
       setError('');
+      setRestoredDraftNotice(true);
+      setOtherUnitDraft(null);
+      return;
     }
+
+    setUnitCode(initialUnitCode ?? runningUnits[0]?.code ?? '');
+    setJamBd(getCurrentTimeHHMM());
+    setLokasi('');
+    setMrNumbers([]);
+    setPartName('');
+    setKeterangan('');
+    setStatus('B0');
+    setPicMekanik('');
+    setEtr('');
+    setError('');
+    setRestoredDraftNotice(false);
+    setOtherUnitDraft(
+      saved && hasMeaningfulContent && initialUnitCode && saved.unitCode !== initialUnitCode
+        ? saved
+        : null
+    );
   }, [isOpen, initialUnitCode, runningUnits]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const hasMeaningfulContent = Boolean(
+      lokasi.trim() ||
+        partName.trim() ||
+        keterangan.trim() ||
+        mrNumbers.length > 0 ||
+        picMekanik.trim() ||
+        etr.trim() ||
+        status !== 'B0'
+    );
+    if (!hasMeaningfulContent) return;
+    saveModalDraft({
+      unitCode,
+      jamBd,
+      lokasi,
+      mrNumbers,
+      partName,
+      keterangan,
+      status,
+      picMekanik,
+      etr,
+    });
+  }, [isOpen, unitCode, jamBd, lokasi, mrNumbers, partName, keterangan, status, picMekanik, etr]);
+
   if (!isOpen) return null;
+
+  const handleResetDraft = () => {
+    clearModalDraft();
+    setUnitCode(initialUnitCode ?? runningUnits[0]?.code ?? '');
+    setJamBd(getCurrentTimeHHMM());
+    setLokasi('');
+    setMrNumbers([]);
+    setPartName('');
+    setKeterangan('');
+    setStatus('B0');
+    setPicMekanik('');
+    setEtr('');
+    setRestoredDraftNotice(false);
+    setOtherUnitDraft(null);
+  };
+
+  const handleApplyOtherDraft = () => {
+    if (!otherUnitDraft) return;
+    const validSavedUnit = runningUnits.some((u) => u.code === otherUnitDraft.unitCode);
+    setUnitCode(validSavedUnit ? otherUnitDraft.unitCode : runningUnits[0]?.code ?? '');
+    setJamBd(otherUnitDraft.jamBd || getCurrentTimeHHMM());
+    setLokasi(otherUnitDraft.lokasi);
+    setMrNumbers(otherUnitDraft.mrNumbers);
+    setPartName(otherUnitDraft.partName);
+    setKeterangan(otherUnitDraft.keterangan);
+    setStatus(otherUnitDraft.status);
+    setPicMekanik(otherUnitDraft.picMekanik);
+    setEtr(otherUnitDraft.etr);
+    setRestoredDraftNotice(true);
+    setOtherUnitDraft(null);
+  };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +222,9 @@ export function InputBdModal({
       setError(res.message ?? 'Gagal memindahkan unit ke BD.');
       return;
     }
+    clearModalDraft();
+    setRestoredDraftNotice(false);
+    setOtherUnitDraft(null);
     onClose();
   };
 
@@ -107,6 +256,35 @@ export function InputBdModal({
         </div>
 
         <form onSubmit={handleFormSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto ops-scroll">
+          {restoredDraftNotice && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-[11px] text-amber-900">
+              <span>Draf ketikan terakhir dipulihkan otomatis.</span>
+              <button
+                type="button"
+                onClick={handleResetDraft}
+                className="inline-flex items-center gap-1 font-semibold text-amber-950 hover:underline cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                <span>Reset</span>
+              </button>
+            </div>
+          )}
+
+          {otherUnitDraft && !restoredDraftNotice && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-[11px] text-blue-900">
+              <span>
+                Ada draf belum tersimpan untuk <strong>{otherUnitDraft.unitCode || 'unit sebelumnya'}</strong>.
+              </span>
+              <button
+                type="button"
+                onClick={handleApplyOtherDraft}
+                className="font-semibold text-blue-800 hover:underline cursor-pointer shrink-0"
+              >
+                Pulihkan
+              </button>
+            </div>
+          )}
+
           <datalist id="modal-bd-location-suggestions">
             {BD_LOCATION_SUGGESTIONS.map((loc) => (
               <option key={loc} value={loc} />

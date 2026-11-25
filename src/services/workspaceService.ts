@@ -621,11 +621,12 @@ export async function updateWorkspaceMemberRole(
 
 export function subscribeBoardFleet(
   workspaceId: string,
-  onData: (units: FleetUnit[], meta: { updatedByName?: string }) => void
+  onData: (units: FleetUnit[], meta: { updatedByName?: string; hasPendingWrites?: boolean }) => void
 ): Unsubscribe {
   const path = `workspaces/${workspaceId}/board/fleet`;
   return onSnapshot(
     doc(db, 'workspaces', workspaceId, 'board', 'fleet'),
+    { includeMetadataChanges: true },
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
@@ -635,6 +636,7 @@ export function subscribeBoardFleet(
         .sort((a, b) => a.orderIndex - b.orderIndex);
       onData(list, {
         updatedByName: typeof data.updatedByName === 'string' ? data.updatedByName : undefined,
+        hasPendingWrites: snap.metadata.hasPendingWrites,
       });
     },
     (error) => {
@@ -645,11 +647,15 @@ export function subscribeBoardFleet(
 
 export function subscribeBoardActiveBd(
   workspaceId: string,
-  onData: (records: BreakdownRecord[], meta: { updatedByName?: string }) => void
+  onData: (
+    records: BreakdownRecord[],
+    meta: { updatedByName?: string; hasPendingWrites?: boolean }
+  ) => void
 ): Unsubscribe {
   const path = `workspaces/${workspaceId}/board/activeBd`;
   return onSnapshot(
     doc(db, 'workspaces', workspaceId, 'board', 'activeBd'),
+    { includeMetadataChanges: true },
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
@@ -659,6 +665,7 @@ export function subscribeBoardActiveBd(
         .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
       onData(list, {
         updatedByName: typeof data.updatedByName === 'string' ? data.updatedByName : undefined,
+        hasPendingWrites: snap.metadata.hasPendingWrites,
       });
     },
     (error) => {

@@ -1,6 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, User } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
+import {
+  doc,
+  Firestore,
+  getDocFromServer,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -9,7 +17,22 @@ const firestoreDatabaseId =
   (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
   'ai-studio-fleetbdopsmonito-8b5955b7-cbb3-4d59-bf9a-9650e1e2f2e5';
 
-export const db = getFirestore(app, firestoreDatabaseId);
+let dbInstance: Firestore;
+try {
+  dbInstance = initializeFirestore(
+    app,
+    {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    },
+    firestoreDatabaseId
+  );
+} catch {
+  dbInstance = getFirestore(app, firestoreDatabaseId);
+}
+
+export const db = dbInstance;
 export const auth = getAuth(app);
 
 export const SCOPES = [
@@ -98,6 +121,28 @@ export interface FirestoreErrorInfo {
       email?: string | null;
     }[];
   };
+}
+
+export function isTransientNetworkError(error: unknown): boolean {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+      ? error
+      : JSON.stringify(error ?? '');
+  const lower = raw.toLowerCase();
+  if (lower.includes('permission') || lower.includes('insufficient')) {
+    return false;
+  }
+  return (
+    lower.includes('unavailable') ||
+    lower.includes('client is offline') ||
+    lower.includes('network-request-failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('err_internet_disconnected') ||
+    lower.includes('aborted')
+  );
 }
 
 export function handleFirestoreError(

@@ -32,6 +32,71 @@ import {
 import { CompactMrInput, InlineTableMrCell } from './MrListInput';
 import { Time24Input } from './Time24Input';
 
+const PANEL_DRAFT_KEY = 'fleetbd_draft_input_bd_panel_v1';
+
+interface InputBdPanelDraft {
+  unitInput: string;
+  jamBd: string;
+  lokasi: string;
+  mrNumbers: string[];
+  partName: string;
+  keterangan: string;
+  status: BdStatus;
+  picMekanik: string;
+  etr: string;
+}
+
+function loadPanelDraft(): InputBdPanelDraft | null {
+  try {
+    const raw = localStorage.getItem(PANEL_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<InputBdPanelDraft>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const draft: InputBdPanelDraft = {
+      unitInput: String(parsed.unitInput ?? ''),
+      jamBd: String(parsed.jamBd ?? ''),
+      lokasi: String(parsed.lokasi ?? ''),
+      mrNumbers: Array.isArray(parsed.mrNumbers)
+        ? parsed.mrNumbers.filter((x): x is string => typeof x === 'string')
+        : [],
+      partName: String(parsed.partName ?? ''),
+      keterangan: String(parsed.keterangan ?? ''),
+      status: (parsed.status as BdStatus) || 'B0',
+      picMekanik: String(parsed.picMekanik ?? ''),
+      etr: String(parsed.etr ?? ''),
+    };
+    const hasContent = Boolean(
+      draft.unitInput.trim() ||
+        draft.lokasi.trim() ||
+        draft.mrNumbers.length > 0 ||
+        draft.partName.trim() ||
+        draft.keterangan.trim() ||
+        draft.picMekanik.trim() ||
+        draft.etr.trim() ||
+        draft.status !== 'B0'
+    );
+    return hasContent ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePanelDraft(draft: InputBdPanelDraft): void {
+  try {
+    localStorage.setItem(PANEL_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // Ignore storage quota error
+  }
+}
+
+function clearPanelDraft(): void {
+  try {
+    localStorage.removeItem(PANEL_DRAFT_KEY);
+  } catch {
+    // Ignore storage error
+  }
+}
+
 interface InputBdPanelProps {
   runningUnits: FleetUnit[];
   bdRecords: BreakdownRecord[];
@@ -86,18 +151,48 @@ export function InputBdPanel({
   onOpenPdfReport,
   copiedWa,
 }: InputBdPanelProps) {
-  const [unitInput, setUnitInput] = useState('');
-  const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
-  const [lokasi, setLokasi] = useState('');
-  const [mrNumbers, setMrNumbers] = useState<string[]>([]);
-  const [partName, setPartName] = useState('');
-  const [keterangan, setKeterangan] = useState('');
-  const [status, setStatus] = useState<BdStatus>('B0');
-  const [picMekanik, setPicMekanik] = useState('');
-  const [etr, setEtr] = useState('');
+  const [initialDraft] = useState<InputBdPanelDraft | null>(() => loadPanelDraft());
+  const [unitInput, setUnitInput] = useState(() => initialDraft?.unitInput ?? '');
+  const [jamBd, setJamBd] = useState(() => initialDraft?.jamBd || getCurrentTimeHHMM());
+  const [lokasi, setLokasi] = useState(() => initialDraft?.lokasi ?? '');
+  const [mrNumbers, setMrNumbers] = useState<string[]>(() => initialDraft?.mrNumbers ?? []);
+  const [partName, setPartName] = useState(() => initialDraft?.partName ?? '');
+  const [keterangan, setKeterangan] = useState(() => initialDraft?.keterangan ?? '');
+  const [status, setStatus] = useState<BdStatus>(() => initialDraft?.status ?? 'B0');
+  const [picMekanik, setPicMekanik] = useState(() => initialDraft?.picMekanik ?? '');
+  const [etr, setEtr] = useState(() => initialDraft?.etr ?? '');
+  const [restoredDraft, setRestoredDraft] = useState(() => Boolean(initialDraft));
   const [formError, setFormError] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [mobileFormOpen, setMobileFormOpen] = useState(false);
+  const [mobileFormOpen, setMobileFormOpen] = useState(() => Boolean(initialDraft));
+
+  useEffect(() => {
+    const hasContent = Boolean(
+      unitInput.trim() ||
+        lokasi.trim() ||
+        mrNumbers.length > 0 ||
+        partName.trim() ||
+        keterangan.trim() ||
+        picMekanik.trim() ||
+        etr.trim() ||
+        status !== 'B0'
+    );
+    if (hasContent) {
+      savePanelDraft({
+        unitInput,
+        jamBd,
+        lokasi,
+        mrNumbers,
+        partName,
+        keterangan,
+        status,
+        picMekanik,
+        etr,
+      });
+    } else {
+      clearPanelDraft();
+    }
+  }, [unitInput, jamBd, lokasi, mrNumbers, partName, keterangan, status, picMekanik, etr]);
 
   const [bdSearch, setBdSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | BdStatus>('ALL');
@@ -177,6 +272,8 @@ export function InputBdPanel({
       setFormError(res.message ?? 'Gagal menginput unit BD.');
       return;
     }
+    clearPanelDraft();
+    setRestoredDraft(false);
     setUnitInput('');
     setLokasi('');
     setMrNumbers([]);
@@ -189,6 +286,21 @@ export function InputBdPanel({
     setFormError('');
     setShowSuggestions(false);
     setMobileFormOpen(false);
+  };
+
+  const handleClearDraft = () => {
+    clearPanelDraft();
+    setRestoredDraft(false);
+    setUnitInput('');
+    setLokasi('');
+    setMrNumbers([]);
+    setPartName('');
+    setKeterangan('');
+    setPicMekanik('');
+    setEtr('');
+    setJamBd(getCurrentTimeHHMM());
+    setStatus('B0');
+    setFormError('');
   };
 
   return (
@@ -527,6 +639,20 @@ export function InputBdPanel({
 
         {formError && (
           <p className="text-xs text-red-600 font-medium">{formError}</p>
+        )}
+
+        {restoredDraft && (
+          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900">
+            <span>Draf input BD terakhir dipulihkan otomatis.</span>
+            <button
+              type="button"
+              onClick={handleClearDraft}
+              className="inline-flex items-center gap-1 font-semibold text-amber-950 hover:underline cursor-pointer shrink-0"
+            >
+              <RotateCcw className="w-3 h-3" aria-hidden="true" />
+              <span>Bersihkan Draf</span>
+            </button>
+          </div>
         )}
       </form>
 
