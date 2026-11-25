@@ -218,7 +218,6 @@ export function buildWhatsappReport(
 
   const pmscReady = runningUnits.filter((u) => u.fleetGroup === 'PMSC');
   const pmvvReady = runningUnits.filter((u) => u.fleetGroup === 'PMVV');
-  const lainnyaReady = runningUnits.filter((u) => u.fleetGroup === 'LAINNYA');
 
   const pmscTotal =
     pmscReady.length + bdRecords.filter((b) => b.fleetGroup === 'PMSC').length;
@@ -277,17 +276,9 @@ export function buildWhatsappReport(
     if (runningUnits.length === 0) {
       lines.push('Tidak ada unit Ready saat ini.');
     } else {
-      if (pmscReady.length > 0) {
-        lines.push(`• *PMSC (${pmscReady.length}):* ${pmscReady.map((u) => u.code).join(', ')}`);
-      }
-      if (pmvvReady.length > 0) {
-        lines.push(`• *PMVV (${pmvvReady.length}):* ${pmvvReady.map((u) => u.code).join(', ')}`);
-      }
-      if (lainnyaReady.length > 0) {
-        lines.push(
-          `• *LAINNYA (${lainnyaReady.length}):* ${lainnyaReady.map((u) => u.code).join(', ')}`
-        );
-      }
+      runningUnits.forEach((unit, idx) => {
+        lines.push(`${idx + 1}. ${unit.code}`);
+      });
     }
   }
 
