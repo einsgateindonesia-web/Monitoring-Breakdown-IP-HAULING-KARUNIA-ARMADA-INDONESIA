@@ -1161,8 +1161,11 @@ export default function App() {
     showToast('Populasi armada dikembalikan ke 75 unit awal.');
   };
 
-  const handleCopyWaReport = async () => {
-    const report = buildWhatsappReport(runningUnits, bdRecords, masterUnits.length);
+  const handleCopyWaReport = async (includeReadyUnits?: boolean | unknown) => {
+    const includeReady = typeof includeReadyUnits === 'boolean' ? includeReadyUnits : true;
+    const report = buildWhatsappReport(runningUnits, bdRecords, masterUnits.length, {
+      includeReadyUnits: includeReady,
+    });
     try {
       await navigator.clipboard.writeText(report);
       setCopiedWa(true);

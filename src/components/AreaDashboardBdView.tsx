@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Check, Copy, Download, FileText } from 'lucide-react';
 import { BD_STATUS_CATALOG, BD_STATUS_STYLES } from '../data/initialUnits';
 import {
@@ -29,7 +30,7 @@ interface AreaDashboardBdViewProps {
     bdCount: number;
   }) => void;
   onClearHourlyOverride: (key: string) => void;
-  onCopyWaReport: () => void;
+  onCopyWaReport: (includeReadyUnits?: boolean) => void;
   onExportCsv: () => void;
   onOpenPdfReport: () => void;
   copiedWa: boolean;
@@ -97,7 +98,18 @@ export function AreaDashboardBdView({
       .sort((a, b) => b.count - a.count);
   })();
 
-  const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount);
+  const [includeReadyInWa, setIncludeReadyInWa] = useState(true);
+  const [waClockTick, setWaClockTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setWaClockTick((t) => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  void waClockTick;
+  const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount, {
+    includeReadyUnits: includeReadyInWa,
+  });
 
   return (
     <div className="space-y-6">
@@ -135,7 +147,7 @@ export function AreaDashboardBdView({
           </button>
           <button
             type="button"
-            onClick={onCopyWaReport}
+            onClick={() => onCopyWaReport(includeReadyInWa)}
             className="col-span-2 sm:col-span-1 min-h-[42px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             {copiedWa ? (
@@ -309,23 +321,34 @@ export function AreaDashboardBdView({
 
         {/* Right 5 Cols: Shift Handover / WhatsApp Report */}
         <section className="lg:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Preview Laporan Shift (WA)</h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Otomatis terupdate sesuai data Running &amp; BD terkini
-              </p>
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/70 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Preview Laporan Shift (WA)</h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Otomatis terupdate sesuai data Running/Ready &amp; BD terkini
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onCopyWaReport(includeReadyInWa)}
+                className="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer shrink-0"
+              >
+                {copiedWa ? 'Tersalin' : 'Salin Teks'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onCopyWaReport}
-              className="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer"
-            >
-              {copiedWa ? 'Tersalin' : 'Salin Teks'}
-            </button>
+            <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeReadyInWa}
+                onChange={(e) => setIncludeReadyInWa(e.target.checked)}
+                className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600 cursor-pointer"
+              />
+              <span>Tampilkan Daftar Unit Ready / Running ({runningUnits.length} unit)</span>
+            </label>
           </div>
-          <div className="p-4">
-            <pre className="p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed max-h-[460px] overflow-auto ops-scroll">
+          <div className="p-4 space-y-3">
+            <pre className="p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed max-h-[520px] overflow-auto ops-scroll">
               {waReportText}
             </pre>
           </div>

@@ -201,8 +201,10 @@ export function formatMrNumbers(mrNumbers?: string[] | null, emptyFallback = '-'
 export function buildWhatsappReport(
   runningUnits: FleetUnit[],
   bdRecords: BreakdownRecord[],
-  totalFleetCount: number
+  totalFleetCount: number,
+  options?: { includeReadyUnits?: boolean }
 ): string {
+  const includeReadyUnits = options?.includeReadyUnits ?? true;
   const now = new Date();
   const nowMs = now.getTime();
   const dateStr = now.toLocaleDateString('id-ID', {
@@ -214,16 +216,18 @@ export function buildWhatsappReport(
   const paPct =
     totalFleetCount > 0 ? ((runningUnits.length / totalFleetCount) * 100).toFixed(1) : '0.0';
 
+  const pmscReady = runningUnits.filter((u) => u.fleetGroup === 'PMSC');
+  const pmvvReady = runningUnits.filter((u) => u.fleetGroup === 'PMVV');
+  const lainnyaReady = runningUnits.filter((u) => u.fleetGroup === 'LAINNYA');
+
   const pmscTotal =
-    runningUnits.filter((u) => u.fleetGroup === 'PMSC').length +
-    bdRecords.filter((b) => b.fleetGroup === 'PMSC').length;
-  const pmscRun = runningUnits.filter((u) => u.fleetGroup === 'PMSC').length;
+    pmscReady.length + bdRecords.filter((b) => b.fleetGroup === 'PMSC').length;
+  const pmscRun = pmscReady.length;
   const pmscBd = bdRecords.filter((b) => b.fleetGroup === 'PMSC').length;
 
   const pmvvTotal =
-    runningUnits.filter((u) => u.fleetGroup === 'PMVV').length +
-    bdRecords.filter((b) => b.fleetGroup === 'PMVV').length;
-  const pmvvRun = runningUnits.filter((u) => u.fleetGroup === 'PMVV').length;
+    pmvvReady.length + bdRecords.filter((b) => b.fleetGroup === 'PMVV').length;
+  const pmvvRun = pmvvReady.length;
   const pmvvBd = bdRecords.filter((b) => b.fleetGroup === 'PMVV').length;
 
   const agingOver6h = bdRecords.filter((r) => {
@@ -266,6 +270,25 @@ export function buildWhatsappReport(
         `${idx + 1}. ${rec.unitCode} | Jam BD: ${rec.jamBd} (${extras.join(' · ')}) | Posisi: ${lok} | MR: ${mrText} | ${formatBdStatus(rec.status)} | Ket: ${ket}`
       );
     });
+  }
+
+  if (includeReadyUnits) {
+    lines.push(``, `*DAFTAR UNIT READY / RUNNING (${runningUnits.length})*`);
+    if (runningUnits.length === 0) {
+      lines.push('Tidak ada unit Ready saat ini.');
+    } else {
+      if (pmscReady.length > 0) {
+        lines.push(`• *PMSC (${pmscReady.length}):* ${pmscReady.map((u) => u.code).join(', ')}`);
+      }
+      if (pmvvReady.length > 0) {
+        lines.push(`• *PMVV (${pmvvReady.length}):* ${pmvvReady.map((u) => u.code).join(', ')}`);
+      }
+      if (lainnyaReady.length > 0) {
+        lines.push(
+          `• *LAINNYA (${lainnyaReady.length}):* ${lainnyaReady.map((u) => u.code).join(', ')}`
+        );
+      }
+    }
   }
 
   return lines.join('\n');
