@@ -24,6 +24,7 @@ import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
   handleFirestoreError,
+  hashNormalizedEmail,
   OperationType,
   sanitizeDisplayName,
   sanitizeId,
@@ -55,6 +56,16 @@ export interface WorkspaceInviteInfo {
   ownerUid: string;
   active: boolean;
   createdByUid: string;
+}
+
+export interface WorkspaceAllowedEmailInfo {
+  emailHash: string;
+  email: string;
+  workspaceId: string;
+  ownerUid: string;
+  role: 'admin' | 'operator';
+  addedByUid: string;
+  addedByName: string;
 }
 
 export interface WorkspaceInfo {
@@ -431,12 +442,35 @@ export async function fetchWorkspaceInfo(workspaceId: string): Promise<Workspace
   }
 }
 
+export function extractInviteCodeFromInput(rawInput: string): string {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return '';
+
+  // Handle full invite URL pasted directly into code box
+  if (/^https?:\/\//i.test(trimmed) || trimmed.includes('invite=')) {
+    const match = trimmed.match(/[?&]invite=([a-zA-Z0-9_-]+)/i);
+    if (match?.[1]) {
+      return sanitizeId(match[1].trim().toUpperCase());
+    }
+  }
+
+  return sanitizeId(trimmed.toUpperCase());
+}
+
 export async function joinWorkspaceWithInvite(
   workspaceId: string,
   rawInviteCode: string,
   user: User
 ): Promise<{ ok: boolean; message?: string; membership?: WorkspaceMemberInfo }> {
-  const inviteCode = sanitizeId(rawInviteCode.trim().toUpperCase());
+  if (!user.emailVerified) {
+    return {
+      ok: false,
+      message:
+        'Email akun Google Anda belum terverifikasi oleh Google. Gunakan akun @gmail.com atau verifikasi email Anda di pengaturan Akun Google.',
+    };
+  }
+
+  const inviteCode = extractInviteCodeFromInput(rawInviteCode);
   if (!inviteCode) {
     return { ok: false, message: 'Masukkan kode undangan tim terlebih dahulu.' };
   }
@@ -487,6 +521,54 @@ export async function joinWorkspaceWithInvite(
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, invitePath);
+  }
+}
+
+export async function autoJoinIfEmailAllowed(
+  workspaceId: string,
+  user: User
+): Promise<WorkspaceMemberInfo | null> {
+  if (!user.email || !user.emailVerified) {
+    return null;
+  }
+
+  const emailHash = await hashNormalizedEmail(user.email);
+  const allowPath = `workspaces/${workspaceId}/allowedEmails/${emailHash}`;
+  try {
+    const allowSnap = await getDoc(doc(db, 'workspaces', workspaceId, 'allowedEmails', emailHash));
+    if (!allowSnap.exists()) {
+      return null;
+    }
+
+    const allowData = allowSnap.data();
+    const ownerUid = String(allowData.ownerUid ?? '');
+    if (!ownerUid) return null;
+
+    const role: 'admin' | 'operator' = allowData.role === 'admin' ? 'admin' : 'operator';
+    const displayName = sanitizeDisplayName(user.displayName, user.email);
+    const memberRef = doc(db, 'workspaces', workspaceId, 'members', user.uid);
+
+    await setDoc(memberRef, {
+      uid: user.uid,
+      workspaceId,
+      ownerUid,
+      displayName,
+      role,
+      inviteCode: 'EMAIL-DIRECT',
+      joinedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    return {
+      uid: user.uid,
+      workspaceId,
+      ownerUid,
+      displayName,
+      role,
+      inviteCode: 'EMAIL-DIRECT',
+    };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, allowPath);
   }
 }
 
@@ -616,6 +698,98 @@ export async function updateWorkspaceMemberRole(
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function listAllowedEmails(
+  workspaceId: string,
+  ownerUid: string
+): Promise<WorkspaceAllowedEmailInfo[]> {
+  const path = `workspaces/${workspaceId}/allowedEmails`;
+  try {
+    const q = query(
+      collection(db, 'workspaces', workspaceId, 'allowedEmails'),
+      where('ownerUid', '==', ownerUid)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        emailHash: String(data.emailHash ?? d.id),
+        email: String(data.email ?? ''),
+        workspaceId: String(data.workspaceId ?? workspaceId),
+        ownerUid: String(data.ownerUid ?? ownerUid),
+        role: data.role === 'admin' ? 'admin' : 'operator',
+        addedByUid: String(data.addedByUid ?? ''),
+        addedByName: String(data.addedByName ?? ''),
+      };
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, path);
+  }
+}
+
+export async function allowEmailInWorkspace(
+  workspaceId: string,
+  ownerUid: string,
+  rawEmail: string,
+  role: 'admin' | 'operator',
+  user: User
+): Promise<WorkspaceAllowedEmailInfo> {
+  const normalizedEmail = rawEmail.trim().toLowerCase().slice(0, BLUEPRINT_LIMITS.maxEmailLength);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error('Format email tidak valid. Contoh: namarekan@gmail.com');
+  }
+
+  const emailHash = await hashNormalizedEmail(normalizedEmail);
+  const path = `workspaces/${workspaceId}/allowedEmails/${emailHash}`;
+  const actor = toActor(user);
+
+  try {
+    const ref = doc(db, 'workspaces', workspaceId, 'allowedEmails', emailHash);
+    const existingSnap = await getDoc(ref);
+    if (!existingSnap.exists()) {
+      await setDoc(ref, {
+        emailHash,
+        email: normalizedEmail,
+        workspaceId,
+        ownerUid,
+        role,
+        addedByUid: actor.uid,
+        addedByName: actor.displayName,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(ref, {
+        role,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      emailHash,
+      email: normalizedEmail,
+      workspaceId,
+      ownerUid,
+      role,
+      addedByUid: actor.uid,
+      addedByName: actor.displayName,
+    };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function removeAllowedEmail(
+  workspaceId: string,
+  emailHash: string
+): Promise<void> {
+  const path = `workspaces/${workspaceId}/allowedEmails/${emailHash}`;
+  try {
+    await deleteDoc(doc(db, 'workspaces', workspaceId, 'allowedEmails', emailHash));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
 

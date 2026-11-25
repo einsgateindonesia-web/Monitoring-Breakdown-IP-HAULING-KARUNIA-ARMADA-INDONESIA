@@ -127,6 +127,64 @@
       },
       "required": ["code", "workspaceId", "ownerUid", "active", "createdByUid", "createdAt", "updatedAt"]
     },
+    "WorkspaceAllowedEmail": {
+      "title": "WorkspaceAllowedEmail",
+      "description": "Pre-approved personal email allowlist entry created by an Admin so coworkers join automatically upon Google login.",
+      "type": "object",
+      "properties": {
+        "emailHash": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "operator"]
+        },
+        "addedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "addedByName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "emailHash",
+        "email",
+        "workspaceId",
+        "ownerUid",
+        "role",
+        "addedByUid",
+        "addedByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "WorkspaceMember": {
       "title": "WorkspaceMember",
       "description": "Membership record for a coworker in a workspace (non-PII).",
@@ -419,6 +477,10 @@
     "/workspaces/{workspaceId}/invites/{inviteCode}": {
       "schema": { "$ref": "#/entities/WorkspaceInvite" },
       "description": "Invite tokens used by coworkers to join a workspace."
+    },
+    "/workspaces/{workspaceId}/allowedEmails/{emailHash}": {
+      "schema": { "$ref": "#/entities/WorkspaceAllowedEmail" },
+      "description": "Pre-approved personal email allowlist for automatic coworker onboarding."
     },
     "/workspaces/{workspaceId}/members/{memberUid}": {
       "schema": { "$ref": "#/entities/WorkspaceMember" },

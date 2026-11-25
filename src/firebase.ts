@@ -39,11 +39,16 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
 ] as const;
 
+// Basic Google Sign-In provider (no sensitive Workspace scopes) so any personal email can sign in seamlessly
 export const googleProvider = new GoogleAuthProvider();
-for (const scope of SCOPES) {
-  googleProvider.addScope(scope);
-}
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Dedicated provider with Google Sheets scope, requested on-demand only when syncing Spreadsheet
+export const sheetsGoogleProvider = new GoogleAuthProvider();
+for (const scope of SCOPES) {
+  sheetsGoogleProvider.addScope(scope);
+}
+sheetsGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // In-memory only cache for Google Workspace OAuth access token (never localStorage/sessionStorage)
 let cachedWorkspaceAccessToken: string | null = null;
@@ -60,13 +65,23 @@ export async function requestGoogleSheetsAccessToken(): Promise<{
   user: User;
   accessToken: string;
 }> {
-  const result = await signInWithPopup(auth, googleProvider);
+  const result = await signInWithPopup(auth, sheetsGoogleProvider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (!credential?.accessToken) {
     throw new Error('Izin akses Google Sheets tidak diperoleh. Pastikan izin Spreadsheet dicentang saat masuk.');
   }
   setCachedWorkspaceAccessToken(credential.accessToken);
   return { user: result.user, accessToken: credential.accessToken };
+}
+
+export async function hashNormalizedEmail(email: string): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'einsgateindonesia@gmail.com';

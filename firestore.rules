@@ -19,6 +19,14 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidEmailHash(hash) {
+      return hash is string && hash.size() == 64 && hash.matches('^[a-f0-9]{64}$');
+    }
+
+    function currentUserEmailHash() {
+      return hashing.sha256(request.auth.token.email.lower().toUtf8()).toHexString();
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -117,6 +125,48 @@ service cloud.firestore {
         && isValidId(data.ownerUid)
         && data.active is bool
         && isValidId(data.createdByUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAllowedEmail(data, workspaceId, emailHash) {
+      return data.keys().hasAll([
+          'emailHash',
+          'email',
+          'workspaceId',
+          'ownerUid',
+          'role',
+          'addedByUid',
+          'addedByName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'emailHash',
+          'email',
+          'workspaceId',
+          'ownerUid',
+          'role',
+          'addedByUid',
+          'addedByName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidEmailHash(data.emailHash)
+        && data.emailHash == emailHash
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 160
+        && isValidId(data.workspaceId)
+        && data.workspaceId == workspaceId
+        && isValidId(data.ownerUid)
+        && data.role is string
+        && (data.role == 'admin' || data.role == 'operator')
+        && isValidId(data.addedByUid)
+        && data.addedByName is string
+        && data.addedByName.size() >= 1
+        && data.addedByName.size() <= 80
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && data.updatedAt == request.time;
@@ -340,7 +390,7 @@ service cloud.firestore {
 
       match /invites/{inviteCode} {
         allow get: if isSignedIn() && isVerifiedEmail() && isValidId(workspaceId) && isValidId(inviteCode);
-        allow list: if isSignedIn() && isVerifiedEmail() && existing().ownerUid == request.auth.uid;
+        allow list: if isSignedIn() && isVerifiedEmail() && (existing().ownerUid == request.auth.uid || isBootstrappedAdmin());
         allow create: if isWorkspaceAdmin(workspaceId)
           && isValidId(workspaceId)
           && isValidId(inviteCode)
@@ -360,6 +410,47 @@ service cloud.firestore {
         allow delete: if isWorkspaceAdmin(workspaceId) && isValidId(workspaceId) && isValidId(inviteCode);
       }
 
+      match /allowedEmails/{emailHash} {
+        allow get: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidEmailHash(emailHash)
+          && (
+            isWorkspaceAdmin(workspaceId)
+            || (
+              request.auth.token.email is string
+              && request.auth.token.email.size() >= 3
+              && currentUserEmailHash() == emailHash
+            )
+          );
+        allow list: if isSignedIn()
+          && isVerifiedEmail()
+          && (existing().ownerUid == request.auth.uid || isBootstrappedAdmin());
+        allow create: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidEmailHash(emailHash)
+          && isValidAllowedEmail(incoming(), workspaceId, emailHash)
+          && incoming().addedByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/workspaces/$(workspaceId))
+          && incoming().ownerUid == get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid;
+        allow update: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidEmailHash(emailHash)
+          && isValidAllowedEmail(incoming(), workspaceId, emailHash)
+          && incoming().emailHash == existing().emailHash
+          && incoming().email == existing().email
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().addedByUid == existing().addedByUid
+          && incoming().addedByName == existing().addedByName
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt']);
+        allow delete: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidEmailHash(emailHash);
+      }
+
       match /members/{memberUid} {
         allow get: if isSignedIn()
           && isVerifiedEmail()
@@ -368,7 +459,7 @@ service cloud.firestore {
           && (request.auth.uid == memberUid || isWorkspaceMember(workspaceId));
         allow list: if isSignedIn()
           && isVerifiedEmail()
-          && (existing().uid == request.auth.uid || existing().ownerUid == request.auth.uid);
+          && (existing().uid == request.auth.uid || existing().ownerUid == request.auth.uid || isBootstrappedAdmin());
         allow create: if isSignedIn()
           && isVerifiedEmail()
           && isValidId(workspaceId)
@@ -386,6 +477,15 @@ service cloud.firestore {
               && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode))
               && get(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode)).data.active == true
               && get(/databases/$(database)/documents/workspaces/$(workspaceId)/invites/$(incoming().inviteCode)).data.ownerUid == incoming().ownerUid
+            )
+            || (
+              request.auth.uid == memberUid
+              && request.auth.token.email is string
+              && request.auth.token.email.size() >= 3
+              && incoming().inviteCode == 'EMAIL-DIRECT'
+              && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/allowedEmails/$(currentUserEmailHash()))
+              && get(/databases/$(database)/documents/workspaces/$(workspaceId)/allowedEmails/$(currentUserEmailHash())).data.role == incoming().role
+              && get(/databases/$(database)/documents/workspaces/$(workspaceId)/allowedEmails/$(currentUserEmailHash())).data.ownerUid == incoming().ownerUid
             )
           );
         allow update: if isSignedIn()

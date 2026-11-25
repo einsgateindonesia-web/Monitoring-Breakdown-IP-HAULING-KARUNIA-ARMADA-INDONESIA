@@ -192,11 +192,17 @@ export function SpreadsheetLinkModal({
         await runInspectChanges();
       }
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Gagal menghubungkan izin Google Sheets. Pastikan popup diizinkan.'
-      );
+      const msg = err instanceof Error ? err.message : '';
+      const lower = msg.toLowerCase();
+      if (lower.includes('access_denied') || lower.includes('popup-closed-by-user')) {
+        setErrorMsg(
+          'Izin akses Google Sheets dibatalkan atau email ini belum masuk daftar izin Sheets Google Cloud. Fitur board web tetap dapat digunakan penuh tanpa izin Sheets.'
+        );
+      } else {
+        setErrorMsg(
+          msg || 'Gagal menghubungkan izin Google Sheets. Pastikan popup diizinkan.'
+        );
+      }
     } finally {
       setConnectingGoogle(false);
     }

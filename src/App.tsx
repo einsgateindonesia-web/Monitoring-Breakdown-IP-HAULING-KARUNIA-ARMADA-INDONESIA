@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { onSnapshotsInSync, Unsubscribe } from 'firebase/firestore';
 import {
   ArrowDownToLine,
@@ -56,7 +56,9 @@ import {
   SheetsApiError,
 } from './services/googleSheetsService';
 import {
+  allowEmailInWorkspace,
   appendAuditLogCloud,
+  autoJoinIfEmailAllowed,
   BoardMetaState,
   clearAllRfuMonthsCloud,
   clearHourlyOverrideCloud,
@@ -70,9 +72,11 @@ import {
   getMonthKeyFromDate,
   isBootstrappedAdminUser,
   joinWorkspaceWithInvite,
+  listAllowedEmails,
   listWorkspaceInvites,
   listWorkspaceMembers,
   migrateLocalSnapshotToCloud,
+  removeAllowedEmail,
   removeWorkspaceMember,
   replaceActiveBdCloud,
   saveFleetUnitsReplace,
@@ -217,7 +221,6 @@ export default function App() {
     loadFromStorage<boolean>(STORAGE_KEYS.autoCheckSheets, true)
   );
   const [sheetPullPreview, setSheetPullPreview] = useState<SheetPullDiffPreview | null>(null);
-  const [oauthTokenSignal, setOauthTokenSignal] = useState<number>(0);
   const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() =>
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -400,6 +403,17 @@ export default function App() {
         return;
       }
 
+      if (!user.emailVerified) {
+        setMembership(null);
+        setWorkspaceInfo(null);
+        setAuthError(
+          `Email akun Google (${user.email || 'tidak diketahui'}) belum terverifikasi. Gunakan akun @gmail.com pribadi atau verifikasi email Anda di pengaturan Akun Google.`
+        );
+        setWorkspaceLoading(false);
+        setAuthReady(true);
+        return;
+      }
+
       setWorkspaceLoading(true);
       try {
         await syncUserProfile(user);
@@ -421,6 +435,19 @@ export default function App() {
           }
         } else {
           let existingMember = await fetchMembership(workspaceId, user.uid);
+          if (!existingMember) {
+            const allowedMember = await autoJoinIfEmailAllowed(workspaceId, user);
+            if (allowedMember) {
+              existingMember = allowedMember;
+              pendingInviteRef.current = '';
+              setPendingInviteCode('');
+              if (typeof window !== 'undefined' && window.location.search) {
+                window.history.replaceState({}, '', window.location.pathname);
+              }
+              showToast('Email Anda terdaftar — berhasil masuk ke tim operasional.');
+            }
+          }
+
           const inviteToUse = pendingInviteRef.current;
           if (!existingMember && inviteToUse) {
             const joinRes = await joinWorkspaceWithInvite(workspaceId, inviteToUse, user);
@@ -473,7 +500,11 @@ export default function App() {
             );
           }
         } else {
-          setSyncError(err instanceof Error ? err : new Error(String(err)));
+          setMembership(null);
+          setWorkspaceInfo(null);
+          setAuthError(
+            'Akses akun belum dapat diverifikasi ke tim operasional. Pastikan Anda menggunakan akun Google / Gmail yang aktif atau minta Admin mendaftarkan email Anda.'
+          );
         }
       } finally {
         setWorkspaceLoading(false);
@@ -628,12 +659,7 @@ export default function App() {
     setAuthErrorCode(null);
     setSigningIn(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedWorkspaceAccessToken(credential.accessToken);
-        setOauthTokenSignal((n) => n + 1);
-      }
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
       const code =
         typeof err === 'object' && err !== null && 'code' in err
@@ -676,15 +702,48 @@ export default function App() {
     code: string
   ): Promise<{ ok: boolean; message?: string }> => {
     if (!currentUser) return { ok: false, message: 'Silakan login terlebih dahulu.' };
-    const res = await joinWorkspaceWithInvite(workspaceId, code, currentUser);
-    if (res.ok && res.membership) {
-      setMembership(res.membership);
-      const ws = await fetchWorkspaceInfo(workspaceId);
-      setWorkspaceInfo(ws);
-      showToast('Berhasil bergabung ke tim operasional.');
-      return { ok: true };
+    try {
+      const res = await joinWorkspaceWithInvite(workspaceId, code, currentUser);
+      if (res.ok && res.membership) {
+        setMembership(res.membership);
+        const ws = await fetchWorkspaceInfo(workspaceId);
+        setWorkspaceInfo(ws);
+        showToast('Berhasil bergabung ke tim operasional.');
+        return { ok: true };
+      }
+      return { ok: false, message: res.message };
+    } catch {
+      return {
+        ok: false,
+        message:
+          'Kode undangan tidak dapat diverifikasi saat ini. Pastikan kode benar dan email akun Google Anda terverifikasi.',
+      };
     }
-    return { ok: false, message: res.message };
+  };
+
+  const handleRecheckEmailAccess = async (): Promise<{ ok: boolean; message?: string }> => {
+    if (!currentUser) return { ok: false, message: 'Silakan login terlebih dahulu.' };
+    try {
+      const existingMember =
+        (await fetchMembership(workspaceId, currentUser.uid)) ||
+        (await autoJoinIfEmailAllowed(workspaceId, currentUser));
+      if (existingMember) {
+        setMembership(existingMember);
+        const ws = await fetchWorkspaceInfo(workspaceId);
+        setWorkspaceInfo(ws);
+        showToast('Akses ditemukan — berhasil masuk ke tim operasional.');
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        message: `Email ${currentUser.email || ''} belum terdaftar di daftar akses langsung. Minta Admin menambahkannya di menu Tim & Undangan, atau masukkan kode undangan di atas.`,
+      };
+    } catch {
+      return {
+        ok: false,
+        message: 'Gagal memeriksa akses email. Periksa koneksi internet lalu coba lagi.',
+      };
+    }
   };
 
   // Core transfer rule: Units present in bdRecords are automatically excluded from runningUnits
@@ -784,7 +843,7 @@ export default function App() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [authReady, currentUser, membership, sheetConfig, autoCheckSheets, oauthTokenSignal]);
+  }, [authReady, currentUser, membership, sheetConfig, autoCheckSheets]);
 
   const partTrackCount = useMemo(
     () =>
@@ -1941,6 +2000,7 @@ export default function App() {
         mode="join"
         userDisplayName={sanitizeDisplayName(currentUser.displayName, currentUser.email)}
         userEmail={currentUser.email}
+        userEmailVerified={currentUser.emailVerified}
         pendingInviteCode={pendingInviteCode}
         loading={workspaceLoading}
         errorMessage={authError}
@@ -1948,6 +2008,7 @@ export default function App() {
         onSignInGoogle={handleSignInGoogle}
         onSignOut={handleSignOut}
         onJoinWithCode={handleJoinWithCode}
+        onRecheckEmailAccess={handleRecheckEmailAccess}
       />
     );
   }
@@ -2350,17 +2411,45 @@ export default function App() {
         localSummaryText={localSnapshot.summaryText}
         onClose={() => setTeamModalOpen(false)}
         onLoadTeamDetails={async () => {
-          const [members, invites] = await Promise.all([
+          const [membersRes, invitesRes, allowedRes] = await Promise.allSettled([
             listWorkspaceMembers(workspaceId, effectiveOwnerUid),
             listWorkspaceInvites(workspaceId, effectiveOwnerUid),
+            listAllowedEmails(workspaceId, effectiveOwnerUid),
           ]);
-          return { members, invites };
+          return {
+            members: membersRes.status === 'fulfilled' ? membersRes.value : [],
+            invites: invitesRes.status === 'fulfilled' ? invitesRes.value : [],
+            allowedEmails: allowedRes.status === 'fulfilled' ? allowedRes.value : [],
+          };
         }}
         onCreateInviteCode={async () => {
           return createNewInviteCode(workspaceId, effectiveOwnerUid, currentUser);
         }}
         onToggleInviteActive={async (code, active) => {
           await setInviteActiveState(workspaceId, code, active);
+        }}
+        onAllowEmail={async (email, role) => {
+          const added = await allowEmailInWorkspace(
+            workspaceId,
+            effectiveOwnerUid,
+            email,
+            role,
+            currentUser
+          );
+          logAudit({
+            actionType: 'TEAM_ROLE',
+            summary: `Mendaftarkan email rekan kerja (${added.email}) sebagai ${role === 'admin' ? 'Admin' : 'Operator'}`,
+          });
+          showToast(`Email ${added.email} diizinkan masuk otomatis.`);
+          return added;
+        }}
+        onRemoveAllowedEmail={async (emailHash) => {
+          await removeAllowedEmail(workspaceId, emailHash);
+          logAudit({
+            actionType: 'TEAM_ROLE',
+            summary: 'Menghapus email dari daftar akses langsung tim',
+          });
+          showToast('Email dihapus dari daftar akses langsung.');
         }}
         onUpdateMemberRole={async (memberUid, nextRole) => {
           await updateWorkspaceMemberRole(workspaceId, memberUid, nextRole);
