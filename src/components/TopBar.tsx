@@ -17,8 +17,8 @@ export function TopBar({
   rfuCount,
 }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
-      <div className="max-w-[1440px] mx-auto px-3 sm:px-6 h-12 md:h-14 flex items-center justify-between gap-3 md:gap-8">
+    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 no-print">
+      <div className="max-w-[1680px] mx-auto px-3 sm:px-5 h-12 md:h-14 flex items-center justify-between gap-3 md:gap-8">
         {/* Zone 1: Single text element wordmark */}
         <button
           type="button"
@@ -63,6 +63,17 @@ export function TopBar({
             }`}
           >
             Riwayat RFU ({rfuCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeTab('historical')}
+            className={`py-4 border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none ${
+              activeTab === 'historical'
+                ? 'border-blue-700 text-slate-900 font-semibold'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            Historical BD
           </button>
         </nav>
 

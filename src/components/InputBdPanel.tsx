@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Copy,
   Download,
+  FileText,
   Plus,
   RotateCcw,
   Search,
@@ -64,6 +65,7 @@ interface InputBdPanelProps {
   onCopyWaReport: () => void;
   onExportCsv: () => void;
   onOpenUploadBd: () => void;
+  onOpenPdfReport: () => void;
   copiedWa: boolean;
 }
 
@@ -77,6 +79,7 @@ export function InputBdPanel({
   onCopyWaReport,
   onExportCsv,
   onOpenUploadBd,
+  onOpenPdfReport,
   copiedWa,
 }: InputBdPanelProps) {
   const [unitInput, setUnitInput] = useState('');
@@ -181,7 +184,7 @@ export function InputBdPanel({
   };
 
   return (
-    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[420px] lg:min-h-[560px] lg:h-[calc(100vh-245px)]">
+    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[420px] xl:min-h-[560px] xl:h-[calc(100vh-245px)]">
       {/* Header & Export Actions */}
       <div className="px-3.5 sm:px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -191,7 +194,7 @@ export function InputBdPanel({
           </p>
         </div>
 
-        <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={onOpenUploadBd}
@@ -200,6 +203,16 @@ export function InputBdPanel({
             <Upload className="w-3.5 h-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">Upload Excel BD</span>
             <span className="sm:hidden">Upload XL</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenPdfReport}
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 text-xs font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <FileText className="w-3.5 h-3.5 text-red-600" aria-hidden="true" />
+            <span className="hidden sm:inline">Laporan PDF</span>
+            <span className="sm:hidden">PDF</span>
           </button>
 
           <button
@@ -265,7 +278,8 @@ export function InputBdPanel({
           ))}
         </datalist>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.75fr_1.1fr_1.2fr_1.4fr_1.1fr_auto] gap-2 items-end">
+        {/* Row 1: Unit Identity, Time, Location, MR, Status */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.75fr_1.15fr_1.2fr_1.35fr] gap-2.5 items-end">
           {/* UNIT BD Combobox */}
           <div className="relative">
             <label
@@ -397,26 +411,8 @@ export function InputBdPanel({
             />
           </div>
 
-          {/* KETERANGAN */}
-          <div>
-            <label
-              htmlFor="quick-ket-bd"
-              className="block text-[11px] font-semibold text-slate-600 mb-1"
-            >
-              KETERANGAN
-            </label>
-            <input
-              id="quick-ket-bd"
-              type="text"
-              value={keterangan}
-              onChange={(e) => setKeterangan(e.target.value)}
-              placeholder="Keluhan / problem..."
-              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
-            />
-          </div>
-
           {/* STATUS */}
-          <div>
+          <div className="sm:col-span-2 lg:col-span-1">
             <label
               htmlFor="quick-status-bd"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
@@ -436,44 +432,71 @@ export function InputBdPanel({
               ))}
             </select>
           </div>
-
-          {/* Submit */}
-          <div>
-            <button
-              type="submit"
-              className="w-full px-3.5 py-2.5 md:py-1.5 min-h-[42px] md:min-h-0 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Pindah ke BD
-            </button>
-          </div>
         </div>
 
-        {/* Optional Field Ops Row: PIC Mekanik & ETR */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center pt-0.5">
+        {/* Row 2: Wide Keterangan, PIC Mekanik, ETR & Submit */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.5fr)_1fr_0.7fr_auto] gap-2.5 items-end pt-0.5">
+          {/* KETERANGAN (Luas & Nyaman dibaca) */}
+          <div className="sm:col-span-2 lg:col-span-1">
+            <label
+              htmlFor="quick-ket-bd"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              KETERANGAN PROBLEM / KELUHAN
+            </label>
+            <input
+              id="quick-ket-bd"
+              type="text"
+              value={keterangan}
+              onChange={(e) => setKeterangan(e.target.value)}
+              placeholder="Tulis detail keluhan / problem mekanikal secara lengkap..."
+              className="w-full px-3 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+            />
+          </div>
+
           <div>
+            <label
+              htmlFor="quick-pic-mekanik"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              PIC MEKANIK
+            </label>
             <input
               id="quick-pic-mekanik"
               type="text"
               value={picMekanik}
               onChange={(e) => setPicMekanik(e.target.value)}
-              placeholder="PIC Mekanik (opsional)"
+              placeholder="Nama mekanik (opsional)"
               aria-label="PIC Mekanik"
-              className="w-full px-2.5 py-1.5 md:py-1 text-sm md:text-xs bg-white border border-slate-200 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
+
           <div>
+            <label
+              htmlFor="quick-etr-bd"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              ETR SIAP (24:00)
+            </label>
             <Time24Input
               id="quick-etr-bd"
               value={etr}
               onChange={setEtr}
-              placeholder="ETR siap (HH:mm)"
+              placeholder="HH:mm"
               ariaLabel="Estimasi Ready ETR"
-              className="w-full px-2.5 py-1.5 md:py-1 text-sm md:text-xs font-mono tabular-nums bg-white border border-slate-200 rounded-md text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
-          <p className="col-span-2 text-[11px] text-slate-400 hidden sm:block">
-            PIC Mekanik &amp; ETR dapat diisi sekarang atau langsung diedit di tabel.
-          </p>
+
+          <div className="sm:col-span-2 lg:col-span-1">
+            <button
+              type="submit"
+              className="w-full px-4 py-2.5 md:py-1.5 min-h-[42px] md:min-h-[30px] text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Pindah ke BD
+            </button>
+          </div>
         </div>
 
         {formError && (
@@ -756,26 +779,24 @@ export function InputBdPanel({
 
       {/* DESKTOP INLINE EDITABLE SPREADSHEET TABLE (md+) */}
       <div className="hidden md:block flex-1 overflow-auto ops-scroll">
-        <table className="w-full text-left border-collapse min-w-[1160px]">
+        <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
-              <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
-              <th className="py-2 px-2 w-28">UNIT BD</th>
-              <th className="py-2 px-2 w-20">JAM BD</th>
-              <th className="py-2 px-2 w-24">DURASI</th>
-              <th className="py-2 px-2 w-32">POSISI / LOKASI</th>
-              <th className="py-2 px-2 w-40">NOMOR MR</th>
-              <th className="py-2 px-2 w-32">PIC MEKANIK</th>
-              <th className="py-2 px-2 w-20">ETR</th>
-              <th className="py-2 px-2">KETERANGAN</th>
-              <th className="py-2 px-2 w-48">STATUS</th>
-              <th className="py-2 pl-2 pr-4 text-right w-28">AKSI</th>
+              <th className="py-2 pl-3.5 pr-1.5 w-9 font-mono">NO</th>
+              <th className="py-2 px-1.5 w-[96px]">UNIT BD</th>
+              <th className="py-2 px-1.5 w-[86px]">JAM &amp; DURASI</th>
+              <th className="py-2 px-1.5 w-[112px] xl:w-[126px]">POSISI / LOKASI</th>
+              <th className="py-2 px-1.5 w-[124px] xl:w-[138px]">NOMOR MR</th>
+              <th className="py-2 px-1.5 w-[116px] xl:w-[130px]">PIC &amp; ETR</th>
+              <th className="py-2 px-1.5 min-w-[200px]">KETERANGAN</th>
+              <th className="py-2 px-1.5 w-[146px] xl:w-[172px]">STATUS</th>
+              <th className="py-2 pl-1.5 pr-3.5 text-right w-[78px]">AKSI</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredBdRecords.length === 0 ? (
               <tr>
-                <td colSpan={11} className="py-16 px-4 text-center">
+                <td colSpan={9} className="py-16 px-4 text-center">
                   <div className="max-w-sm mx-auto space-y-2">
                     <div className="w-9 h-9 mx-auto rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
                       <Wrench className="w-4 h-4" aria-hidden="true" />
@@ -787,7 +808,7 @@ export function InputBdPanel({
                     </p>
                     <p className="text-xs text-slate-500">
                       {bdRecords.length === 0
-                        ? 'Pilih unit dari panel Unit Running di sebelah kiri atau ketik kode unit pada form di atas untuk memindahkannya ke daftar BD.'
+                        ? 'Pilih unit dari panel Unit Running atau ketik kode unit pada form di atas untuk memindahkannya ke daftar BD.'
                         : 'Ubah kata kunci pencarian atau reset filter di atas.'}
                     </p>
                   </div>
@@ -806,83 +827,100 @@ export function InputBdPanel({
                 const severity = getAgingSeverity(durMin);
 
                 return (
-                  <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2 pl-4 pr-2 font-mono tabular-nums text-slate-400">
+                  <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors align-top">
+                    <td className="py-2.5 pl-3.5 pr-1.5 font-mono tabular-nums text-slate-400">
                       {idx + 1}
                     </td>
-                    <td className="py-2 px-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
-                      {rec.unitCode}
+
+                    <td className="py-2.5 px-1.5 whitespace-nowrap">
+                      <div className="font-mono font-semibold text-slate-900">
+                        {rec.unitCode}
+                      </div>
+                      <div className="text-[10px] font-medium text-slate-400">
+                        {rec.fleetGroup}
+                      </div>
                     </td>
-                    <td className="py-2 px-2">
-                      <Time24Input
-                        value={rec.jamBd}
-                        ariaLabel={`Jam BD ${rec.unitCode}`}
-                        onChange={(val) => onUpdateBd(rec.id, { jamBd: val })}
-                        className="w-full px-1.5 py-1 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
-                      />
+
+                    <td className="py-2 px-1.5">
+                      <div className="space-y-1">
+                        <Time24Input
+                          value={rec.jamBd}
+                          ariaLabel={`Jam BD ${rec.unitCode}`}
+                          onChange={(val) => onUpdateBd(rec.id, { jamBd: val })}
+                          className="w-full px-1.5 py-0.5 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
+                        />
+                        <span
+                          title={`BD sejak ${rec.tanggalBd} ${rec.jamBd}`}
+                          className={`inline-block px-1.5 py-0.5 text-[10px] font-mono tabular-nums rounded border whitespace-nowrap ${
+                            severity === 'critical'
+                              ? 'bg-red-50 text-red-700 border-red-200 font-semibold'
+                              : severity === 'warning'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {formatDurationId(durMin)}
+                        </span>
+                      </div>
                     </td>
-                    <td className="py-2 px-2 whitespace-nowrap">
-                      <span
-                        title={`BD sejak ${rec.tanggalBd} ${rec.jamBd}`}
-                        className={`inline-block px-1.5 py-0.5 text-[11px] font-mono tabular-nums rounded border ${
-                          severity === 'critical'
-                            ? 'bg-red-50 text-red-700 border-red-200 font-semibold'
-                            : severity === 'warning'
-                            ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
-                            : 'bg-slate-50 text-slate-600 border-slate-200'
-                        }`}
-                      >
-                        {formatDurationId(durMin)}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2">
+
+                    <td className="py-2 px-1.5">
                       <input
                         type="text"
                         list="bd-location-suggestions"
                         value={rec.lokasi ?? ''}
                         aria-label={`Posisi atau lokasi BD ${rec.unitCode}`}
-                        placeholder="Isi lokasi..."
+                        placeholder="Lokasi..."
                         onChange={(e) => onUpdateBd(rec.id, { lokasi: e.target.value })}
-                        className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
+                        className="w-full px-1.5 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
                       />
                     </td>
-                    <td className="py-2 px-2">
+
+                    <td className="py-2 px-1.5">
                       <InlineTableMrCell
                         unitCode={rec.unitCode}
                         value={rec.mrNumbers ?? []}
                         onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
                       />
                     </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="text"
-                        value={rec.picMekanik ?? ''}
-                        aria-label={`PIC Mekanik ${rec.unitCode}`}
-                        placeholder="PIC..."
-                        onChange={(e) => onUpdateBd(rec.id, { picMekanik: e.target.value })}
-                        className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
-                      />
+
+                    <td className="py-2 px-1.5">
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          value={rec.picMekanik ?? ''}
+                          aria-label={`PIC Mekanik ${rec.unitCode}`}
+                          placeholder="PIC mekanik..."
+                          onChange={(e) => onUpdateBd(rec.id, { picMekanik: e.target.value })}
+                          className="w-full px-1.5 py-0.5 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
+                        />
+                        <div className="flex items-center gap-1 px-1.5">
+                          <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                            ETR
+                          </span>
+                          <Time24Input
+                            value={rec.etr ?? ''}
+                            ariaLabel={`ETR ${rec.unitCode}`}
+                            placeholder="--:--"
+                            onChange={(val) => onUpdateBd(rec.id, { etr: val })}
+                            className="w-full px-1 py-0.5 text-[11px] font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-700"
+                          />
+                        </div>
+                      </div>
                     </td>
-                    <td className="py-2 px-2">
-                      <Time24Input
-                        value={rec.etr ?? ''}
-                        ariaLabel={`ETR ${rec.unitCode}`}
-                        placeholder="--:--"
-                        onChange={(val) => onUpdateBd(rec.id, { etr: val })}
-                        className="w-full px-1.5 py-1 text-xs font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="text"
+
+                    <td className="py-2 px-1.5">
+                      <textarea
+                        rows={2}
                         value={rec.keterangan}
                         aria-label={`Keterangan BD ${rec.unitCode}`}
-                        placeholder="Isi keterangan..."
+                        placeholder="Isi keterangan problem / keluhan..."
                         onChange={(e) => onUpdateBd(rec.id, { keterangan: e.target.value })}
-                        className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-800 placeholder:text-slate-400"
+                        className="w-full px-2 py-1 text-xs leading-snug bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200/80 hover:border-slate-300 focus:border-blue-600 rounded focus:outline-none text-slate-900 placeholder:text-slate-400 resize-y min-h-[44px]"
                       />
                     </td>
-                    <td className="py-2 px-2">
+
+                    <td className="py-2 px-1.5">
                       <select
                         value={rec.status}
                         aria-label={`Status BD ${rec.unitCode}`}
@@ -898,8 +936,9 @@ export function InputBdPanel({
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 pl-2 pr-4 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
+
+                    <td className="py-2 pl-1.5 pr-3.5 text-right">
+                      <div className="inline-flex items-center justify-end gap-1">
                         <button
                           type="button"
                           onClick={() => onMarkRfu(rec.id)}

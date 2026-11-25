@@ -65,7 +65,7 @@ export interface RfuHistoryRecord {
   picMekanik?: string;
 }
 
-export type ActiveTab = 'board' | 'dashboard' | 'riwayat';
+export type ActiveTab = 'board' | 'dashboard' | 'riwayat' | 'historical';
 
 export interface HourlySlotOverride {
   key: string; // `${shiftDate}__${slotIndex}`

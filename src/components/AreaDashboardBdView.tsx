@@ -1,4 +1,4 @@
-import { Check, Copy, Download } from 'lucide-react';
+import { Check, Copy, Download, FileText } from 'lucide-react';
 import { BD_STATUS_CATALOG, BD_STATUS_STYLES } from '../data/initialUnits';
 import {
   BreakdownRecord,
@@ -31,6 +31,7 @@ interface AreaDashboardBdViewProps {
   onClearHourlyOverride: (key: string) => void;
   onCopyWaReport: () => void;
   onExportCsv: () => void;
+  onOpenPdfReport: () => void;
   copiedWa: boolean;
   onBackToBoard: () => void;
 }
@@ -50,6 +51,7 @@ export function AreaDashboardBdView({
   onClearHourlyOverride,
   onCopyWaReport,
   onExportCsv,
+  onOpenPdfReport,
   copiedWa,
   onBackToBoard,
 }: AreaDashboardBdViewProps) {
@@ -120,6 +122,14 @@ export function AreaDashboardBdView({
           >
             <Download className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
             <span>Export CSV</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPdfReport}
+            className="min-h-[40px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <FileText className="w-3.5 h-3.5 text-red-600" aria-hidden="true" />
+            <span>Unduh PDF</span>
           </button>
           <button
             type="button"

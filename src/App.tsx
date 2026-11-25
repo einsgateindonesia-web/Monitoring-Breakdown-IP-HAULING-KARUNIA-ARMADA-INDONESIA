@@ -5,10 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AreaDashboardBdView } from './components/AreaDashboardBdView';
 import { AuditLogModal } from './components/AuditLogModal';
 import { DashboardSummaryStrip } from './components/DashboardSummaryStrip';
+import { HistoricalBdView } from './components/HistoricalBdView';
 import { InputBdModal } from './components/InputBdModal';
 import { InputBdPanel } from './components/InputBdPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { OnlineAuthGate } from './components/OnlineAuthGate';
+import { PdfReportModal } from './components/PdfReportModal';
 import { PopulationManagerModal } from './components/PopulationManagerModal';
 import { RfuHistoryView } from './components/RfuHistoryView';
 import { SparepartMrTrackingSection } from './components/SparepartMrTrackingSection';
@@ -16,6 +18,10 @@ import { TeamManagementModal } from './components/TeamManagementModal';
 import { TopBar } from './components/TopBar';
 import { UnitRunningPanel } from './components/UnitRunningPanel';
 import { BdBulkImportPayload, UploadBdModal } from './components/UploadBdModal';
+import {
+  HistoricalBulkImportPayload,
+  UploadHistoricalBdModal,
+} from './components/UploadHistoricalBdModal';
 import {
   INITIAL_FLEET_UNITS,
   PART_STATUS_LABELS,
@@ -87,6 +93,10 @@ import {
   getCurrentTimeHHMM,
   normalizeMrList,
 } from './utils/fleetUtils';
+import {
+  buildRfuDedupKey,
+  convertHistoricalImportRowToRfu,
+} from './utils/historicalImportUtils';
 import { getCurrentOperationalShiftDate } from './utils/hourlyShiftUtils';
 
 const STORAGE_KEYS = {
@@ -163,6 +173,8 @@ export default function App() {
   const [modalUnitCode, setModalUnitCode] = useState<string | null>(null);
   const [populationModalOpen, setPopulationModalOpen] = useState(false);
   const [uploadBdModalOpen, setUploadBdModalOpen] = useState(false);
+  const [uploadHistModalOpen, setUploadHistModalOpen] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [copiedWa, setCopiedWa] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [localMigrationDismissed, setLocalMigrationDismissed] = useState<boolean>(() =>
@@ -1380,6 +1392,103 @@ export default function App() {
     return { ok: true };
   };
 
+  const handleBulkImportHistorical = (
+    payload: HistoricalBulkImportPayload
+  ): { ok: boolean; message?: string } => {
+    if (!currentUser) return { ok: false, message: 'Sesi login tidak aktif.' };
+    if (payload.rows.length === 0) {
+      return { ok: false, message: 'Tidak ada baris data histori untuk diimpor.' };
+    }
+
+    const existingKeys = new Set<string>(rfuHistory.map((item) => buildRfuDedupKey(item)));
+    const batchSeenKeys = new Set<string>();
+    const rowsToImport = payload.rows.filter((row) => {
+      const key = buildRfuDedupKey(row);
+      if (payload.skipDuplicates && (existingKeys.has(key) || batchSeenKeys.has(key))) {
+        return false;
+      }
+      batchSeenKeys.add(key);
+      return true;
+    });
+
+    if (rowsToImport.length === 0) {
+      return {
+        ok: false,
+        message: 'Semua baris pada file/input sudah ada di riwayat histori (terdeteksi duplikat).',
+      };
+    }
+
+    const masterMap = new Map<string, FleetUnit>();
+    masterUnits.forEach((u) => {
+      masterMap.set(u.code.trim().toUpperCase(), u);
+    });
+
+    const newlyRegisteredUnits: FleetUnit[] = [];
+    let nextOrderIdx =
+      masterUnits.length > 0
+        ? Math.max(...masterUnits.map((u) => u.orderIndex)) + 1
+        : 1;
+
+    if (payload.autoRegisterUnknownUnits && isOwnerOrAdmin) {
+      for (const row of rowsToImport) {
+        const key = row.unitCode.trim().toUpperCase();
+        if (!masterMap.has(key)) {
+          const newUnit: FleetUnit = {
+            id: `unit-${Date.now()}-${nextOrderIdx}`,
+            code: key,
+            fleetGroup: detectFleetGroup(key),
+            orderIndex: nextOrderIdx,
+          };
+          nextOrderIdx += 1;
+          masterMap.set(key, newUnit);
+          newlyRegisteredUnits.push(newUnit);
+        }
+      }
+    }
+
+    const newEntries: RfuHistoryRecord[] = rowsToImport.map((row, idx) =>
+      convertHistoricalImportRowToRfu(row, idx)
+    );
+
+    const skippedCount = payload.rows.length - newEntries.length;
+
+    if (newlyRegisteredUnits.length > 0) {
+      setMasterUnits((prev) => [...prev, ...newlyRegisteredUnits]);
+    }
+
+    setRfuByMonth((prev) => {
+      const next = { ...prev };
+      for (const entry of newEntries) {
+        const mKey = getMonthKeyFromDate(entry.tanggalRfu);
+        next[mKey] = { ...(next[mKey] ?? {}), [entry.id]: entry };
+      }
+      return next;
+    });
+
+    runCloudTask(
+      Promise.all([
+        newlyRegisteredUnits.length > 0
+          ? upsertFleetUnitsCloud(workspaceId, newlyRegisteredUnits, currentUser)
+          : Promise.resolve(),
+        upsertRfuRecordsCloud(workspaceId, newEntries, boardMeta.rfuMonths, currentUser),
+      ])
+    );
+
+    const summaryParts = [`${newEntries.length} catatan histori diimpor`];
+    if (skippedCount > 0) summaryParts.push(`${skippedCount} duplikat dilewati`);
+    if (newlyRegisteredUnits.length > 0) {
+      summaryParts.push(`${newlyRegisteredUnits.length} unit baru terdaftar`);
+    }
+
+    logAudit({
+      actionType: 'RFU_HISTORY',
+      summary: `Import Excel Histori BD/RFU: ${summaryParts.join(', ')}`,
+    });
+
+    showToast(`Import histori berhasil: ${summaryParts.join(', ')}.`);
+    return { ok: true };
+  };
+
   const handleMigrateLocalToCloud = async () => {
     if (!currentUser) return;
     await migrateLocalSnapshotToCloud(
@@ -1461,7 +1570,7 @@ export default function App() {
         rfuCount={rfuHistory.length}
       />
 
-      <main className="flex-1 max-w-[1440px] w-full mx-auto px-3 sm:px-6 pt-3 pb-20 sm:py-4 md:pb-5 space-y-3 sm:space-y-4">
+      <main className="no-print flex-1 max-w-[1680px] w-full mx-auto px-3 sm:px-5 pt-3 pb-20 sm:py-4 md:pb-5 space-y-3 sm:space-y-4">
         {/* Compact Online Team Sync Strip (Keeps TopBar cleanly 3-zone) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3 sm:px-3.5 py-2.5 sm:py-2 bg-white border border-slate-200 rounded-md text-xs">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-600">
@@ -1580,9 +1689,9 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4 items-stretch">
               <div
-                className={`lg:col-span-4 ${
+                className={`order-2 xl:order-1 ${
                   mobileBoardPanel === 'running' ? 'block' : 'hidden lg:block'
                 }`}
               >
@@ -1599,7 +1708,7 @@ export default function App() {
               </div>
 
               <div
-                className={`lg:col-span-8 ${
+                className={`order-1 xl:order-2 min-w-0 ${
                   mobileBoardPanel === 'bd' ? 'block' : 'hidden lg:block'
                 }`}
               >
@@ -1613,6 +1722,7 @@ export default function App() {
                   onCopyWaReport={handleCopyWaReport}
                   onExportCsv={() => exportBoardCsv(runningUnits, bdRecords)}
                   onOpenUploadBd={() => setUploadBdModalOpen(true)}
+                  onOpenPdfReport={() => setPdfModalOpen(true)}
                   copiedWa={copiedWa}
                 />
               </div>
@@ -1643,6 +1753,7 @@ export default function App() {
             onClearHourlyOverride={handleClearHourlyOverride}
             onCopyWaReport={handleCopyWaReport}
             onExportCsv={() => exportBoardCsv(runningUnits, bdRecords)}
+            onOpenPdfReport={() => setPdfModalOpen(true)}
             copiedWa={copiedWa}
             onBackToBoard={() => setActiveTab('board')}
           />
@@ -1657,6 +1768,7 @@ export default function App() {
             onAddItem={handleAddRfuHistory}
             onDeleteItem={handleDeleteRfuHistoryItem}
             onExportCsv={() => exportRfuHistoryCsv(rfuHistory)}
+            onOpenPdfReport={() => setPdfModalOpen(true)}
             onClearHistory={() => {
               if (!isOwnerOrAdmin) return;
               const allMonths = Array.from(
@@ -1673,6 +1785,17 @@ export default function App() {
               });
               showToast('Seluruh log riwayat RFU dibersihkan.');
             }}
+            onBackToBoard={() => setActiveTab('board')}
+          />
+        )}
+
+        {activeTab === 'historical' && (
+          <HistoricalBdView
+            masterUnits={masterUnits}
+            bdRecords={bdRecords}
+            rfuHistory={rfuHistory}
+            onOpenUploadHistorical={() => setUploadHistModalOpen(true)}
+            onOpenPdfReport={() => setPdfModalOpen(true)}
             onBackToBoard={() => setActiveTab('board')}
           />
         )}
@@ -1705,6 +1828,15 @@ export default function App() {
         bdRecords={bdRecords}
         onClose={() => setUploadBdModalOpen(false)}
         onApplyImport={handleBulkImportBd}
+      />
+
+      <UploadHistoricalBdModal
+        isOpen={uploadHistModalOpen}
+        isOwnerOrAdmin={isOwnerOrAdmin}
+        masterUnits={masterUnits}
+        existingRfuHistory={rfuHistory}
+        onClose={() => setUploadHistModalOpen(false)}
+        onApplyImport={handleBulkImportHistorical}
       />
 
       <AuditLogModal
@@ -1757,6 +1889,17 @@ export default function App() {
         onMigrateLocalToCloud={handleMigrateLocalToCloud}
       />
 
+      <PdfReportModal
+        isOpen={pdfModalOpen}
+        onClose={() => setPdfModalOpen(false)}
+        runningUnits={runningUnits}
+        bdRecords={bdRecords}
+        rfuHistory={rfuHistory}
+        totalFleetCount={masterUnits.length}
+        targetPaPct={boardMeta.targetPaPct}
+        preparedByName={membership.displayName}
+      />
+
       <MobileBottomNav
         activeTab={activeTab}
         bdCount={bdRecords.length}
@@ -1769,7 +1912,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-md shadow-lg border border-slate-700 text-center sm:text-left"
+          className="no-print fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-md shadow-lg border border-slate-700 text-center sm:text-left"
         >
           {toastMsg}
         </div>
