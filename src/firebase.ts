@@ -1,14 +1,50 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, User } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const firestoreDatabaseId =
+  (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId ||
+  'ai-studio-fleetbdopsmonito-8b5955b7-cbb3-4d59-bf9a-9650e1e2f2e5';
+
+export const db = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
+
+export const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+] as const;
+
 export const googleProvider = new GoogleAuthProvider();
+for (const scope of SCOPES) {
+  googleProvider.addScope(scope);
+}
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// In-memory only cache for Google Workspace OAuth access token (never localStorage/sessionStorage)
+let cachedWorkspaceAccessToken: string | null = null;
+
+export function setCachedWorkspaceAccessToken(token: string | null): void {
+  cachedWorkspaceAccessToken = token && token.trim() ? token.trim() : null;
+}
+
+export function getCachedWorkspaceAccessToken(): string | null {
+  return cachedWorkspaceAccessToken;
+}
+
+export async function requestGoogleSheetsAccessToken(): Promise<{
+  user: User;
+  accessToken: string;
+}> {
+  const result = await signInWithPopup(auth, googleProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (!credential?.accessToken) {
+    throw new Error('Izin akses Google Sheets tidak diperoleh. Pastikan izin Spreadsheet dicentang saat masuk.');
+  }
+  setCachedWorkspaceAccessToken(credential.accessToken);
+  return { user: result.user, accessToken: credential.accessToken };
+}
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'einsgateindonesia@gmail.com';
 export const DEFAULT_WORKSPACE_ID = 'ip-hauling-kai';

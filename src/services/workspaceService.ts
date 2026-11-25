@@ -34,6 +34,7 @@ import {
   FleetUnit,
   HourlySlotOverride,
   RfuHistoryRecord,
+  WorkspaceSheetConfig,
 } from '../types/fleet';
 import { getCurrentDateYYYYMMDD, normalizeMrList } from '../utils/fleetUtils';
 
@@ -92,6 +93,12 @@ export function cleanFleetUnit(unit: FleetUnit): FleetUnit {
 }
 
 export function cleanBreakdownRecord(rec: BreakdownRecord): BreakdownRecord {
+  const accMins =
+    typeof rec.waitingPartAccumulatedMinutes === 'number' &&
+    Number.isFinite(rec.waitingPartAccumulatedMinutes)
+      ? Math.max(0, Math.min(60 * 24 * 365, Math.round(rec.waitingPartAccumulatedMinutes)))
+      : 0;
+
   return {
     id: sanitizeId(rec.id || `bd-${Date.now()}`),
     unitCode: String(rec.unitCode ?? '').trim().toUpperCase().slice(0, 40),
@@ -100,17 +107,25 @@ export function cleanBreakdownRecord(rec: BreakdownRecord): BreakdownRecord {
     tanggalBd: String(rec.tanggalBd ?? '').slice(0, 16),
     lokasi: String(rec.lokasi ?? '').slice(0, 160),
     mrNumbers: normalizeMrList(rec.mrNumbers).slice(0, 30),
+    partName: String(rec.partName ?? '').slice(0, 160),
     keterangan: String(rec.keterangan ?? '').slice(0, 500),
     status: rec.status,
     picMekanik: String(rec.picMekanik ?? '').slice(0, 80),
     etr: String(rec.etr ?? '').slice(0, 10),
     partStatus: normalizePartStatus(rec.partStatus),
     partNote: String(rec.partNote ?? '').slice(0, 300),
+    waitingPartStartedAt: String(rec.waitingPartStartedAt ?? '').slice(0, 40),
+    waitingPartAccumulatedMinutes: accMins,
     updatedAt: String(rec.updatedAt ?? new Date().toISOString()).slice(0, 40),
   };
 }
 
 export function cleanRfuRecord(rec: RfuHistoryRecord): RfuHistoryRecord {
+  const waitMins =
+    typeof rec.waitingPartMinutes === 'number' && Number.isFinite(rec.waitingPartMinutes)
+      ? Math.max(0, Math.min(60 * 24 * 365, Math.round(rec.waitingPartMinutes)))
+      : 0;
+
   return {
     id: sanitizeId(rec.id || `rfu-${Date.now()}`),
     unitCode: String(rec.unitCode ?? '').trim().toUpperCase().slice(0, 40),
@@ -121,6 +136,7 @@ export function cleanRfuRecord(rec: RfuHistoryRecord): RfuHistoryRecord {
     tanggalRfu: String(rec.tanggalRfu ?? '').slice(0, 16),
     lokasi: String(rec.lokasi ?? '').slice(0, 160),
     mrNumbers: normalizeMrList(rec.mrNumbers).slice(0, 30),
+    partName: String(rec.partName ?? '').slice(0, 160),
     keterangan: String(rec.keterangan ?? '').slice(0, 500),
     komponen: String(rec.komponen ?? '').slice(0, 120),
     subKomponen: String(rec.subKomponen ?? '').slice(0, 120),
@@ -128,6 +144,8 @@ export function cleanRfuRecord(rec: RfuHistoryRecord): RfuHistoryRecord {
     activityPerbaikan: String(rec.activityPerbaikan ?? '').slice(0, 500),
     lastStatus: rec.lastStatus,
     picMekanik: String(rec.picMekanik ?? '').slice(0, 80),
+    etr: String(rec.etr ?? '').slice(0, 10),
+    waitingPartMinutes: waitMins,
   };
 }
 
@@ -777,6 +795,106 @@ export async function updateTargetPaCloud(
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, metaPath);
+  }
+}
+
+export function subscribeBoardSheetConfig(
+  workspaceId: string,
+  onData: (config: WorkspaceSheetConfig | null) => void
+): Unsubscribe {
+  const path = `workspaces/${workspaceId}/board/sheetConfig`;
+  return onSnapshot(
+    doc(db, 'workspaces', workspaceId, 'board', 'sheetConfig'),
+    (snap) => {
+      if (!snap.exists()) {
+        onData(null);
+        return;
+      }
+      const data = snap.data();
+      onData({
+        spreadsheetId: String(data.spreadsheetId ?? ''),
+        spreadsheetUrl: String(data.spreadsheetUrl ?? ''),
+        spreadsheetTitle: String(data.spreadsheetTitle ?? 'Master Data Monitoring Breakdown'),
+        createdByUid: String(data.createdByUid ?? ''),
+        createdByName: String(data.createdByName ?? ''),
+        lastSyncedAt: String(data.lastSyncedAt ?? ''),
+        lastSyncedByUid: String(data.lastSyncedByUid ?? ''),
+        lastSyncedByName: String(data.lastSyncedByName ?? ''),
+        lastRowSummary: String(data.lastRowSummary ?? ''),
+      });
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+  );
+}
+
+export async function saveInitialSheetConfigCloud(
+  workspaceId: string,
+  payload: {
+    spreadsheetId: string;
+    spreadsheetUrl: string;
+    spreadsheetTitle: string;
+    lastSyncedAt: string;
+    lastRowSummary: string;
+  },
+  user: User
+): Promise<void> {
+  const actor = toActor(user);
+  const path = `workspaces/${workspaceId}/board/sheetConfig`;
+  const ref = doc(db, 'workspaces', workspaceId, 'board', 'sheetConfig');
+  const safeId = sanitizeId(payload.spreadsheetId);
+  const cleanTitle =
+    String(payload.spreadsheetTitle ?? '').trim().slice(0, 160) ||
+    'Master Data Monitoring Breakdown IP HAULING KAI';
+
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      throw new Error('Link Spreadsheet resmi sudah terdaftar untuk workspace ini dan tidak boleh digandakan.');
+    }
+    await setDoc(ref, {
+      spreadsheetId: safeId,
+      spreadsheetUrl: String(payload.spreadsheetUrl).trim().slice(0, 300),
+      spreadsheetTitle: cleanTitle,
+      createdByUid: actor.uid,
+      createdByName: actor.displayName,
+      lastSyncedAt: String(payload.lastSyncedAt ?? new Date().toISOString()).slice(0, 40),
+      lastSyncedByUid: actor.uid,
+      lastSyncedByName: actor.displayName,
+      lastRowSummary: String(payload.lastRowSummary ?? '').slice(0, 200),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, path);
+  }
+}
+
+export async function updateSheetSyncStatusCloud(
+  workspaceId: string,
+  payload: {
+    spreadsheetTitle: string;
+    lastSyncedAt: string;
+    lastRowSummary: string;
+  },
+  user: User
+): Promise<void> {
+  const actor = toActor(user);
+  const path = `workspaces/${workspaceId}/board/sheetConfig`;
+  const cleanTitle =
+    String(payload.spreadsheetTitle ?? '').trim().slice(0, 160) ||
+    'Master Data Monitoring Breakdown IP HAULING KAI';
+  try {
+    await updateDoc(doc(db, 'workspaces', workspaceId, 'board', 'sheetConfig'), {
+      spreadsheetTitle: cleanTitle,
+      lastSyncedAt: String(payload.lastSyncedAt ?? new Date().toISOString()).slice(0, 40),
+      lastSyncedByUid: actor.uid,
+      lastSyncedByName: actor.displayName,
+      lastRowSummary: String(payload.lastRowSummary ?? '').slice(0, 200),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
   }
 }
 

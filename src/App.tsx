@@ -1,6 +1,6 @@
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { Unsubscribe } from 'firebase/firestore';
-import { Cloud, CloudUpload, History, LogOut, Users } from 'lucide-react';
+import { Cloud, CloudUpload, FileSpreadsheet, History, LogOut, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AreaDashboardBdView } from './components/AreaDashboardBdView';
 import { AuditLogModal } from './components/AuditLogModal';
@@ -14,6 +14,7 @@ import { PdfReportModal } from './components/PdfReportModal';
 import { PopulationManagerModal } from './components/PopulationManagerModal';
 import { RfuHistoryView } from './components/RfuHistoryView';
 import { SparepartMrTrackingSection } from './components/SparepartMrTrackingSection';
+import { SpreadsheetLinkModal } from './components/SpreadsheetLinkModal';
 import { TeamManagementModal } from './components/TeamManagementModal';
 import { TopBar } from './components/TopBar';
 import { UnitRunningPanel } from './components/UnitRunningPanel';
@@ -34,6 +35,7 @@ import {
   DEFAULT_WORKSPACE_ID,
   googleProvider,
   sanitizeDisplayName,
+  setCachedWorkspaceAccessToken,
 } from './firebase';
 import {
   appendAuditLogCloud,
@@ -56,15 +58,18 @@ import {
   removeWorkspaceMember,
   replaceActiveBdCloud,
   saveFleetUnitsReplace,
+  saveInitialSheetConfigCloud,
   setHourlyOverrideCloud,
   setInviteActiveState,
   subscribeBoardActiveBd,
   subscribeBoardAuditLog,
   subscribeBoardFleet,
   subscribeBoardMeta,
+  subscribeBoardSheetConfig,
   subscribeHourlyMonth,
   subscribeRfuMonth,
   syncUserProfile,
+  updateSheetSyncStatusCloud,
   updateTargetPaCloud,
   updateWorkspaceMemberRole,
   upsertBdRecordCloud,
@@ -83,14 +88,17 @@ import {
   FleetUnit,
   HourlySlotOverride,
   RfuHistoryRecord,
+  WorkspaceSheetConfig,
 } from './types/fleet';
 import {
   buildWhatsappReport,
+  computeBdTimeSplit,
   exportBoardCsv,
   exportRfuHistoryCsv,
   formatMrNumbers,
   getCurrentDateYYYYMMDD,
   getCurrentTimeHHMM,
+  isActivelyWaitingPart,
   normalizeMrList,
 } from './utils/fleetUtils';
 import {
@@ -175,6 +183,8 @@ export default function App() {
   const [uploadBdModalOpen, setUploadBdModalOpen] = useState(false);
   const [uploadHistModalOpen, setUploadHistModalOpen] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [sheetModalOpen, setSheetModalOpen] = useState(false);
+  const [sheetConfig, setSheetConfig] = useState<WorkspaceSheetConfig | null>(null);
   const [copiedWa, setCopiedWa] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [localMigrationDismissed, setLocalMigrationDismissed] = useState<boolean>(() =>
@@ -311,8 +321,10 @@ export default function App() {
       setAuthErrorCode(null);
 
       if (!user) {
+        setCachedWorkspaceAccessToken(null);
         setMembership(null);
         setWorkspaceInfo(null);
+        setSheetConfig(null);
         setWorkspaceLoading(false);
         setAuthReady(true);
         return;
@@ -389,11 +401,16 @@ export default function App() {
       setAuditLogs(entries);
     });
 
+    const unsubSheetConfig = subscribeBoardSheetConfig(workspaceId, (cfg) => {
+      setSheetConfig(cfg);
+    });
+
     return () => {
       unsubFleet();
       unsubBd();
       unsubMeta();
       unsubAudit();
+      unsubSheetConfig();
     };
   }, [authReady, currentUser, membership, workspaceId]);
 
@@ -475,7 +492,11 @@ export default function App() {
     setAuthErrorCode(null);
     setSigningIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedWorkspaceAccessToken(credential.accessToken);
+      }
     } catch (err) {
       const code =
         typeof err === 'object' && err !== null && 'code' in err
@@ -509,6 +530,7 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
+    setCachedWorkspaceAccessToken(null);
     await signOut(auth);
   };
 
@@ -565,6 +587,7 @@ export default function App() {
     jamBd: string;
     lokasi: string;
     mrNumbers: string[];
+    partName?: string;
     keterangan: string;
     status: BdStatus;
     picMekanik?: string;
@@ -595,6 +618,9 @@ export default function App() {
       };
     }
 
+    const nowIso = new Date().toISOString();
+    const startsWaiting = isActivelyWaitingPart(payload.status, '');
+
     const newRecord: BreakdownRecord = {
       id: `bd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       unitCode: matchedMaster.code,
@@ -603,13 +629,16 @@ export default function App() {
       tanggalBd: getCurrentDateYYYYMMDD(),
       lokasi: payload.lokasi.trim(),
       mrNumbers: normalizeMrList(payload.mrNumbers),
+      partName: (payload.partName ?? '').trim(),
       keterangan: payload.keterangan.trim(),
       status: payload.status,
       picMekanik: (payload.picMekanik ?? '').trim(),
       etr: (payload.etr ?? '').trim(),
       partStatus: '',
       partNote: '',
-      updatedAt: new Date().toISOString(),
+      waitingPartStartedAt: startsWaiting ? nowIso : '',
+      waitingPartAccumulatedMinutes: 0,
+      updatedAt: nowIso,
     };
 
     setBdRecords((prev) => [newRecord, ...prev]);
@@ -631,6 +660,7 @@ export default function App() {
         | 'jamBd'
         | 'lokasi'
         | 'mrNumbers'
+        | 'partName'
         | 'keterangan'
         | 'status'
         | 'picMekanik'
@@ -644,6 +674,31 @@ export default function App() {
     const existing = bdRecords.find((r) => r.id === id);
     if (!existing) return;
 
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    const nextStatus = patch.status ?? existing.status;
+    const nextPartStatus =
+      patch.partStatus !== undefined
+        ? normalizePartStatus(patch.partStatus)
+        : existing.partStatus;
+
+    const wasWaiting = Boolean((existing.waitingPartStartedAt ?? '').trim());
+    const willWait = isActivelyWaitingPart(nextStatus, nextPartStatus);
+
+    let nextStartedAt = existing.waitingPartStartedAt ?? '';
+    let nextAccumulated = existing.waitingPartAccumulatedMinutes ?? 0;
+
+    if (!wasWaiting && willWait) {
+      nextStartedAt = nowIso;
+    } else if (wasWaiting && !willWait) {
+      const startedMs = Date.parse(existing.waitingPartStartedAt ?? '');
+      if (Number.isFinite(startedMs) && nowMs > startedMs) {
+        nextAccumulated += Math.floor((nowMs - startedMs) / 60000);
+      }
+      nextStartedAt = '';
+    }
+
     const updated: BreakdownRecord = {
       ...existing,
       ...patch,
@@ -651,11 +706,10 @@ export default function App() {
         patch.mrNumbers !== undefined
           ? normalizeMrList(patch.mrNumbers)
           : existing.mrNumbers,
-      partStatus:
-        patch.partStatus !== undefined
-          ? normalizePartStatus(patch.partStatus)
-          : existing.partStatus,
-      updatedAt: new Date().toISOString(),
+      partStatus: nextPartStatus,
+      waitingPartStartedAt: nextStartedAt,
+      waitingPartAccumulatedMinutes: nextAccumulated,
+      updatedAt: nowIso,
     };
 
     setBdRecords((prev) => prev.map((rec) => (rec.id === id ? updated : rec)));
@@ -679,6 +733,12 @@ export default function App() {
         actionType: 'UPDATE_PART',
         unitCode: existing.unitCode,
         summary: `Update nomor MR: ${formatMrNumbers(updated.mrNumbers, 'Kosong')}`,
+      });
+    } else if (patch.partName !== undefined && patch.partName !== (existing.partName ?? '')) {
+      logAuditDebounced(`bd-partname-${id}`, {
+        actionType: 'UPDATE_PART',
+        unitCode: existing.unitCode,
+        summary: `Update nama part utama: ${patch.partName.trim() || 'kosong'}`,
       });
     } else if (patch.jamBd !== undefined && patch.jamBd !== existing.jamBd) {
       logAuditDebounced(`bd-jam-${id}`, {
@@ -720,8 +780,11 @@ export default function App() {
     const target = bdRecords.find((r) => r.id === id);
     if (!target) return;
 
+    const nowMs = Date.now();
+    const split = computeBdTimeSplit(target, nowMs);
+
     const historyEntry: RfuHistoryRecord = {
-      id: `rfu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `rfu-${nowMs}-${Math.random().toString(36).slice(2, 6)}`,
       unitCode: target.unitCode,
       fleetGroup: target.fleetGroup,
       jamBd: target.jamBd,
@@ -730,6 +793,7 @@ export default function App() {
       tanggalRfu: getCurrentDateYYYYMMDD(),
       lokasi: target.lokasi ?? '',
       mrNumbers: normalizeMrList(target.mrNumbers),
+      partName: (target.partName ?? '').trim(),
       keterangan: target.keterangan,
       komponen: '',
       subKomponen: '',
@@ -737,6 +801,8 @@ export default function App() {
       activityPerbaikan: '',
       lastStatus: target.status,
       picMekanik: target.picMekanik ?? '',
+      etr: target.etr ?? '',
+      waitingPartMinutes: split.waitingPartMinutes,
     };
 
     setBdRecords((prev) => prev.filter((r) => r.id !== id));
@@ -1296,12 +1362,15 @@ export default function App() {
           tanggalBd: row.tanggalBd || nowDate,
           lokasi: row.lokasi,
           mrNumbers: normalizeMrList(row.mrNumbers),
+          partName: '',
           keterangan: row.keterangan,
           status: row.status,
           picMekanik: row.picMekanik || '',
           etr: row.etr || '',
           partStatus: '',
           partNote: '',
+          waitingPartStartedAt: isActivelyWaitingPart(row.status, '') ? nowIso : '',
+          waitingPartAccumulatedMinutes: 0,
           updatedAt: nowIso,
         });
       }
@@ -1607,6 +1676,14 @@ export default function App() {
             )}
             <button
               type="button"
+              onClick={() => setSheetModalOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 min-h-[36px] sm:min-h-0 px-3 sm:px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+              <span>{sheetConfig ? 'Link Spreadsheet (1)' : 'Siapkan Spreadsheet'}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setAuditModalOpen(true)}
               className="inline-flex items-center justify-center gap-1.5 min-h-[36px] sm:min-h-0 px-3 sm:px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded cursor-pointer whitespace-nowrap shrink-0"
             >
@@ -1756,6 +1833,7 @@ export default function App() {
             onOpenPdfReport={() => setPdfModalOpen(true)}
             copiedWa={copiedWa}
             onBackToBoard={() => setActiveTab('board')}
+            onOpenHistoricalTab={() => setActiveTab('historical')}
           />
         )}
 
@@ -1895,9 +1973,41 @@ export default function App() {
         runningUnits={runningUnits}
         bdRecords={bdRecords}
         rfuHistory={rfuHistory}
+        hourlyOverrides={hourlyOverrides}
         totalFleetCount={masterUnits.length}
         targetPaPct={boardMeta.targetPaPct}
+        defaultShiftDate={shiftDate}
         preparedByName={membership.displayName}
+      />
+
+      <SpreadsheetLinkModal
+        isOpen={sheetModalOpen}
+        onClose={() => setSheetModalOpen(false)}
+        isOwnerOrAdmin={isOwnerOrAdmin}
+        sheetConfig={sheetConfig}
+        masterUnits={masterUnits}
+        runningUnits={runningUnits}
+        bdRecords={bdRecords}
+        rfuHistory={rfuHistory}
+        hourlyOverrides={hourlyOverrides}
+        targetPaPct={boardMeta.targetPaPct}
+        activeShiftDate={shiftDate}
+        onSaveInitialSheetConfig={async (payload) => {
+          await saveInitialSheetConfigCloud(workspaceId, payload, currentUser);
+          logAudit({
+            actionType: 'SHEET_SYNC',
+            summary: `Menyiapkan 1 Link Spreadsheet resmi (${payload.lastRowSummary})`,
+          });
+          showToast('1 Link Spreadsheet resmi berhasil disimpan untuk tim.');
+        }}
+        onUpdateSheetSyncStatus={async (payload) => {
+          await updateSheetSyncStatusCloud(workspaceId, payload, currentUser);
+          logAudit({
+            actionType: 'SHEET_SYNC',
+            summary: `Sinkronisasi data ke Spreadsheet resmi (${payload.lastRowSummary})`,
+          });
+          showToast('Seluruh data berhasil disinkronkan ke Link Spreadsheet.');
+        }}
       />
 
       <MobileBottomNav

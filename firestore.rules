@@ -235,6 +235,55 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function isValidSheetConfigDoc(data) {
+      return data.keys().hasAll([
+          'spreadsheetId',
+          'spreadsheetUrl',
+          'spreadsheetTitle',
+          'createdByUid',
+          'createdByName',
+          'lastSyncedAt',
+          'lastSyncedByUid',
+          'lastSyncedByName',
+          'lastRowSummary',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'spreadsheetId',
+          'spreadsheetUrl',
+          'spreadsheetTitle',
+          'createdByUid',
+          'createdByName',
+          'lastSyncedAt',
+          'lastSyncedByUid',
+          'lastSyncedByName',
+          'lastRowSummary',
+          'updatedAt'
+        ])
+        && isValidId(data.spreadsheetId)
+        && data.spreadsheetUrl is string
+        && data.spreadsheetUrl.size() >= 30
+        && data.spreadsheetUrl.size() <= 300
+        && data.spreadsheetUrl.matches('^https://docs\\.google\\.com/spreadsheets/d/[a-zA-Z0-9_\\-]+.*$')
+        && data.spreadsheetTitle is string
+        && data.spreadsheetTitle.size() >= 1
+        && data.spreadsheetTitle.size() <= 160
+        && isValidId(data.createdByUid)
+        && data.createdByName is string
+        && data.createdByName.size() >= 1
+        && data.createdByName.size() <= 80
+        && data.lastSyncedAt is string
+        && data.lastSyncedAt.size() <= 40
+        && isValidId(data.lastSyncedByUid)
+        && data.lastSyncedByName is string
+        && data.lastSyncedByName.size() >= 1
+        && data.lastSyncedByName.size() <= 80
+        && data.lastRowSummary is string
+        && data.lastRowSummary.size() <= 200
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
     // 4. Match Blocks for All Collections
     match /admins/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
@@ -429,6 +478,35 @@ service cloud.firestore {
           && isValidAuditLogDoc(incoming())
           && isWorkspaceMember(workspaceId)
           && incoming().diff(existing()).affectedKeys().hasOnly(['entries', 'updatedAt', 'updatedByUid', 'updatedByName']);
+        allow delete: if false;
+      }
+
+      match /board/sheetConfig {
+        allow get: if isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+        allow list: if false;
+        allow create: if isWorkspaceAdmin(workspaceId)
+          && isValidId(workspaceId)
+          && isValidSheetConfigDoc(incoming())
+          && incoming().createdByUid == request.auth.uid
+          && incoming().lastSyncedByUid == request.auth.uid;
+        allow update: if isSignedIn()
+          && isVerifiedEmail()
+          && isValidId(workspaceId)
+          && isValidSheetConfigDoc(incoming())
+          && isWorkspaceMember(workspaceId)
+          && incoming().spreadsheetId == existing().spreadsheetId
+          && incoming().spreadsheetUrl == existing().spreadsheetUrl
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdByName == existing().createdByName
+          && incoming().lastSyncedByUid == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'spreadsheetTitle',
+            'lastSyncedAt',
+            'lastSyncedByUid',
+            'lastSyncedByName',
+            'lastRowSummary',
+            'updatedAt'
+          ]);
         allow delete: if false;
       }
 

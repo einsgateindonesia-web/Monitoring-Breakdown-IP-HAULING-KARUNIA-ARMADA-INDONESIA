@@ -1,5 +1,5 @@
 import { formatBdStatus, PART_STATUS_LABELS } from '../data/initialUnits';
-import { BreakdownRecord, FleetUnit, RfuHistoryRecord } from '../types/fleet';
+import { BdStatus, BreakdownRecord, FleetUnit, PartStatus, RfuHistoryRecord } from '../types/fleet';
 
 export function getCurrentTimeHHMM(): string {
   const now = new Date();
@@ -72,6 +72,106 @@ export function getAgingSeverity(minutes: number | null): 'normal' | 'warning' |
   if (minutes >= 12 * 60) return 'critical';
   if (minutes >= 6 * 60) return 'warning';
   return 'normal';
+}
+
+export function isActivelyWaitingPart(status: BdStatus, partStatus?: PartStatus): boolean {
+  if (partStatus === 'READY_WAREHOUSE' || partStatus === 'INSTALLED') {
+    return false;
+  }
+  if (status === 'B1') return true;
+  return (
+    partStatus === 'WAITING_PR_PO' ||
+    partStatus === 'ORDERED' ||
+    partStatus === 'IN_TRANSIT'
+  );
+}
+
+export function computeBdTimeSplit(
+  rec: BreakdownRecord,
+  nowMs: number = Date.now()
+): {
+  totalMinutes: number;
+  waitingPartMinutes: number;
+  activeRepairMinutes: number;
+  isWaitingNow: boolean;
+} {
+  const rawTotal = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
+  const totalMinutes = rawTotal !== null && rawTotal >= 0 ? rawTotal : 0;
+
+  const accMins =
+    typeof rec.waitingPartAccumulatedMinutes === 'number' &&
+    Number.isFinite(rec.waitingPartAccumulatedMinutes)
+      ? Math.max(0, rec.waitingPartAccumulatedMinutes)
+      : 0;
+
+  let activeSegMins = 0;
+  const startedIso = (rec.waitingPartStartedAt ?? '').trim();
+  if (startedIso) {
+    const startedMs = Date.parse(startedIso);
+    if (Number.isFinite(startedMs) && nowMs > startedMs) {
+      activeSegMins = Math.floor((nowMs - startedMs) / 60000);
+    }
+  }
+
+  const waitingPartMinutes = Math.min(totalMinutes, accMins + activeSegMins);
+  const activeRepairMinutes = Math.max(0, totalMinutes - waitingPartMinutes);
+  const isWaitingNow = Boolean(startedIso) || isActivelyWaitingPart(rec.status, rec.partStatus);
+
+  return {
+    totalMinutes,
+    waitingPartMinutes,
+    activeRepairMinutes,
+    isWaitingNow,
+  };
+}
+
+export function computeRfuTimeSplit(rfu: RfuHistoryRecord): {
+  totalMinutes: number;
+  waitingPartMinutes: number;
+  activeRepairMinutes: number;
+} {
+  const rawTotal = calculateDurationMinutes(
+    rfu.tanggalBd,
+    rfu.jamBd,
+    rfu.tanggalRfu,
+    rfu.jamRfu
+  );
+  const totalMinutes =
+    rawTotal !== null && rawTotal >= 0 && rawTotal <= 60 * 24 * 60 ? rawTotal : 0;
+  const rawWait =
+    typeof rfu.waitingPartMinutes === 'number' && Number.isFinite(rfu.waitingPartMinutes)
+      ? Math.max(0, Math.round(rfu.waitingPartMinutes))
+      : 0;
+  const waitingPartMinutes = Math.min(totalMinutes, rawWait);
+  const activeRepairMinutes = Math.max(0, totalMinutes - waitingPartMinutes);
+  return { totalMinutes, waitingPartMinutes, activeRepairMinutes };
+}
+
+export function computeEtrStatus(
+  tanggalBd?: string,
+  jamBd?: string,
+  etr?: string,
+  compareMs: number = Date.now()
+): {
+  expectedEtrMs: number;
+  isOverdue: boolean;
+  deltaMinutes: number;
+} | null {
+  const cleanEtr = (etr ?? '').trim();
+  if (!/^\d{1,2}:\d{2}$/.test(cleanEtr)) return null;
+  const bdMs = parseDateTimeToMs(tanggalBd, jamBd);
+  let etrMs = parseDateTimeToMs(tanggalBd, cleanEtr);
+  if (bdMs === null || etrMs === null) return null;
+  // Cross-midnight repair (e.g., BD 22:00 -> ETR 02:00 next day)
+  if (etrMs < bdMs) {
+    etrMs += 24 * 3600 * 1000;
+  }
+  const deltaMinutes = Math.round((compareMs - etrMs) / 60000);
+  return {
+    expectedEtrMs: etrMs,
+    isOverdue: deltaMinutes > 0,
+    deltaMinutes,
+  };
 }
 
 export function normalizeMrList(list?: string[] | null): string[] {
@@ -201,12 +301,17 @@ export function buildSparepartWhatsappReport(bdRecords: BreakdownRecord[]): stri
   } else {
     partUnits.forEach((rec, idx) => {
       const mrText = formatMrNumbers(rec.mrNumbers, 'BELUM ADA MR');
+      const partName = rec.partName?.trim() ? `Part: ${rec.partName.trim()} | ` : '';
       const partLabel = PART_STATUS_LABELS[rec.partStatus ?? ''] || 'Belum Diatur';
-      const durMin = calculateDurationMinutes(rec.tanggalBd, rec.jamBd, undefined, undefined, nowMs);
-      const durText = formatDurationId(durMin);
+      const split = computeBdTimeSplit(rec, nowMs);
+      const durText = formatDurationId(split.totalMinutes);
+      const waitInfo =
+        split.waitingPartMinutes > 0
+          ? `, Tunggu Part ${formatDurationId(split.waitingPartMinutes)}`
+          : '';
       const note = rec.partNote?.trim() ? ` | Catatan: ${rec.partNote.trim()}` : '';
       lines.push(
-        `${idx + 1}. ${rec.unitCode} (${rec.status}, Aging ${durText}) | MR: ${mrText} | Status Part: ${partLabel}${note} | Problem: ${rec.keterangan || '-'}`
+        `${idx + 1}. ${rec.unitCode} (${rec.status}, Aging ${durText}${waitInfo}) | MR: ${mrText} | ${partName}Status Part: ${partLabel}${note} | Problem: ${rec.keterangan || '-'}`
       );
     });
   }
@@ -234,8 +339,11 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
     'JAM BD',
     'TANGGAL BD',
     'DURASI BD',
+    'KERJA MEKANIK',
+    'TUNGGU PART',
     'POSISI / LOKASI BD',
     'NOMOR MR',
+    'NAMA PART UTAMA',
     'PIC MEKANIK',
     'ETR',
     'STATUS PART',
@@ -249,11 +357,10 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
   for (let i = 0; i < maxRows; i++) {
     const run = runningUnits[i];
     const bd = bdRecords[i];
-    const durStr = bd
-      ? formatDurationId(
-          calculateDurationMinutes(bd.tanggalBd, bd.jamBd, undefined, undefined, nowMs)
-        )
-      : '';
+    const split = bd ? computeBdTimeSplit(bd, nowMs) : null;
+    const durStr = split ? formatDurationId(split.totalMinutes) : '';
+    const repairStr = split ? formatDurationId(split.activeRepairMinutes) : '';
+    const waitStr = split ? formatDurationId(split.waitingPartMinutes) : '';
 
     rows.push(
       [
@@ -265,8 +372,11 @@ export function exportBoardCsv(runningUnits: FleetUnit[], bdRecords: BreakdownRe
         bd ? bd.jamBd : '',
         bd ? bd.tanggalBd : '',
         durStr,
+        repairStr,
+        waitStr,
         bd ? bd.lokasi ?? '' : '',
         bd ? formatMrNumbers(bd.mrNumbers, '') : '',
+        bd ? bd.partName ?? '' : '',
         bd ? bd.picMekanik ?? '' : '',
         bd ? bd.etr ?? '' : '',
         bd && bd.partStatus ? PART_STATUS_LABELS[bd.partStatus] : '',
@@ -298,10 +408,14 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
     'JAM BD',
     'TANGGAL RFU',
     'JAM RFU',
-    'DURASI PERBAIKAN',
+    'DURASI TOTAL',
+    'KERJA MEKANIK',
+    'TUNGGU PART',
     'POSISI / LOKASI BD',
     'NOMOR MR',
+    'NAMA PART UTAMA',
     'PIC MEKANIK',
+    'ETR',
     'KETERANGAN PROBLEM',
     'KOMPONEN',
     'SUB KOMPONEN',
@@ -312,9 +426,7 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
 
   const rows: string[] = [headers.map(escapeCsvCell).join(',')];
   history.forEach((h, idx) => {
-    const durText = formatDurationId(
-      calculateDurationMinutes(h.tanggalBd, h.jamBd, h.tanggalRfu, h.jamRfu)
-    );
+    const split = computeRfuTimeSplit(h);
     rows.push(
       [
         idx + 1,
@@ -324,10 +436,14 @@ export function exportRfuHistoryCsv(history: RfuHistoryRecord[]): void {
         h.jamBd,
         h.tanggalRfu,
         h.jamRfu,
-        durText,
+        formatDurationId(split.totalMinutes),
+        formatDurationId(split.activeRepairMinutes),
+        formatDurationId(split.waitingPartMinutes),
         h.lokasi ?? '',
         formatMrNumbers(h.mrNumbers, ''),
+        h.partName ?? '',
         h.picMekanik ?? '',
+        h.etr ?? '',
         h.keterangan,
         h.komponen ?? '',
         h.subKomponen ?? '',

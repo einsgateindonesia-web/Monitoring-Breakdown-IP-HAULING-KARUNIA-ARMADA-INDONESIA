@@ -53,6 +53,10 @@ const ACTION_LABELS: Record<AuditActionType, { label: string; style: string }> =
     label: 'Peran Tim',
     style: 'text-rose-800 bg-rose-50 border-rose-200',
   },
+  SHEET_SYNC: {
+    label: 'Spreadsheet',
+    style: 'text-emerald-800 bg-emerald-50 border-emerald-200',
+  },
 };
 
 function formatAuditTime(iso: string): string {

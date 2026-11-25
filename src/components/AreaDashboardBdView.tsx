@@ -34,6 +34,7 @@ interface AreaDashboardBdViewProps {
   onOpenPdfReport: () => void;
   copiedWa: boolean;
   onBackToBoard: () => void;
+  onOpenHistoricalTab?: () => void;
 }
 
 export function AreaDashboardBdView({
@@ -54,6 +55,7 @@ export function AreaDashboardBdView({
   onOpenPdfReport,
   copiedWa,
   onBackToBoard,
+  onOpenHistoricalTab,
 }: AreaDashboardBdViewProps) {
   const groups: FleetGroup[] = ['PMSC', 'PMVV', 'LAINNYA'];
   const groupStats = groups
@@ -337,6 +339,7 @@ export function AreaDashboardBdView({
         hourlyOverrides={hourlyOverrides}
         totalFleetCount={totalFleetCount}
         targetPaPct={targetPaPct}
+        onOpenHistoricalTab={onOpenHistoricalTab}
       />
 
       {/* Hourly PA, Total Population & BD Monitoring (06:00 Shift 1 - 06:00 Shift 2) */}

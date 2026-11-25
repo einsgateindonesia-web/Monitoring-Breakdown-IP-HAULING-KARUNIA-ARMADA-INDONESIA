@@ -37,12 +37,15 @@ export interface BreakdownRecord {
   tanggalBd: string; // YYYY-MM-DD
   lokasi: string;
   mrNumbers: string[];
+  partName?: string;
   keterangan: string;
   status: BdStatus;
   picMekanik?: string;
   etr?: string; // HH:mm estimasi ready
   partStatus?: PartStatus;
   partNote?: string;
+  waitingPartStartedAt?: string; // ISO timestamp when waiting part started (B1 / waiting part status)
+  waitingPartAccumulatedMinutes?: number; // Completed waiting-part duration in minutes
   updatedAt: string;
 }
 
@@ -56,6 +59,7 @@ export interface RfuHistoryRecord {
   tanggalRfu: string;
   lokasi: string;
   mrNumbers: string[];
+  partName?: string;
   keterangan: string; // Keterangan Problem
   komponen: string;
   subKomponen: string;
@@ -63,6 +67,8 @@ export interface RfuHistoryRecord {
   activityPerbaikan: string;
   lastStatus: BdStatus;
   picMekanik?: string;
+  etr?: string;
+  waitingPartMinutes?: number;
 }
 
 export type ActiveTab = 'board' | 'dashboard' | 'riwayat' | 'historical';
@@ -103,7 +109,20 @@ export type AuditActionType =
   | 'RFU_HISTORY'
   | 'FLEET_MASTER'
   | 'TARGET_PA'
-  | 'TEAM_ROLE';
+  | 'TEAM_ROLE'
+  | 'SHEET_SYNC';
+
+export interface WorkspaceSheetConfig {
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  spreadsheetTitle: string;
+  createdByUid: string;
+  createdByName: string;
+  lastSyncedAt: string;
+  lastSyncedByUid: string;
+  lastSyncedByName: string;
+  lastRowSummary: string;
+}
 
 export interface AuditLogEntry {
   id: string;

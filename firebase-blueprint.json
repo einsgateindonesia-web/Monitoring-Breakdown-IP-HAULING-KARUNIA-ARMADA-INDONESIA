@@ -335,6 +335,68 @@
         }
       },
       "required": ["monthKey", "overrides", "updatedAt", "updatedByUid", "updatedByName"]
+    },
+    "WorkspaceSheetConfigDoc": {
+      "title": "WorkspaceSheetConfigDoc",
+      "description": "Single locked Google Spreadsheet link and last sync metadata for the workspace.",
+      "type": "object",
+      "properties": {
+        "spreadsheetId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "spreadsheetUrl": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "spreadsheetTitle": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "createdByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "lastSyncedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "lastSyncedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lastSyncedByName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "lastRowSummary": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "spreadsheetId",
+        "spreadsheetUrl",
+        "spreadsheetTitle",
+        "createdByUid",
+        "createdByName",
+        "lastSyncedAt",
+        "lastSyncedByUid",
+        "lastSyncedByName",
+        "lastRowSummary",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -377,6 +439,10 @@
     "/workspaces/{workspaceId}/board/auditLog": {
       "schema": { "$ref": "#/entities/WorkspaceAuditLogDoc" },
       "description": "Bounded real-time team activity audit log."
+    },
+    "/workspaces/{workspaceId}/board/sheetConfig": {
+      "schema": { "$ref": "#/entities/WorkspaceSheetConfigDoc" },
+      "description": "Single locked Google Spreadsheet link and sync metadata for all workspace data."
     },
     "/workspaces/{workspaceId}/rfuMonths/{monthKey}": {
       "schema": { "$ref": "#/entities/WorkspaceRfuMonthDoc" },

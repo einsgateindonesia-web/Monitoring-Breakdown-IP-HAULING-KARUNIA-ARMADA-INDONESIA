@@ -16,6 +16,7 @@ interface InputBdModalProps {
     jamBd: string;
     lokasi: string;
     mrNumbers: string[];
+    partName?: string;
     keterangan: string;
     status: BdStatus;
     picMekanik?: string;
@@ -34,6 +35,7 @@ export function InputBdModal({
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
   const [lokasi, setLokasi] = useState('');
   const [mrNumbers, setMrNumbers] = useState<string[]>([]);
+  const [partName, setPartName] = useState('');
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
   const [picMekanik, setPicMekanik] = useState('');
@@ -46,6 +48,7 @@ export function InputBdModal({
       setJamBd(getCurrentTimeHHMM());
       setLokasi('');
       setMrNumbers([]);
+      setPartName('');
       setKeterangan('');
       setStatus('B0');
       setPicMekanik('');
@@ -63,6 +66,7 @@ export function InputBdModal({
       jamBd: jamBd || getCurrentTimeHHMM(),
       lokasi,
       mrNumbers,
+      partName,
       keterangan,
       status,
       picMekanik,
@@ -242,6 +246,23 @@ export function InputBdModal({
               value={mrNumbers}
               onChange={setMrNumbers}
               idPrefix="modal-mr"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="modal-part-name"
+              className="block text-xs font-semibold text-slate-700 mb-1"
+            >
+              NAMA PART UTAMA (Opsional)
+            </label>
+            <input
+              id="modal-part-name"
+              type="text"
+              value={partName}
+              onChange={(e) => setPartName(e.target.value)}
+              placeholder="Contoh: Hose Hydraulic High Press, Alternator, Fuel Filter..."
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
 

@@ -13,7 +13,7 @@ import {
 } from '../data/componentHierarchy';
 import { BdStatus, FleetUnit, RfuHistoryRecord } from '../types/fleet';
 import {
-  calculateDurationMinutes,
+  computeRfuTimeSplit,
   formatDurationId,
   formatMrNumbers,
   formatReadableDateId,
@@ -64,6 +64,8 @@ interface EditDraft {
   jamRfu: string;
   lokasi: string;
   mrNumbers: string[];
+  partName: string;
+  waitingPartMinutes: number;
   keterangan: string;
   komponen: string;
   subKomponen: string;
@@ -395,6 +397,7 @@ export function RfuHistoryView({
         h.unitCode.toLowerCase().includes(q) ||
         (h.lokasi ?? '').toLowerCase().includes(q) ||
         (h.mrNumbers ?? []).join(' ').toLowerCase().includes(q) ||
+        (h.partName ?? '').toLowerCase().includes(q) ||
         (h.picMekanik ?? '').toLowerCase().includes(q) ||
         h.keterangan.toLowerCase().includes(q) ||
         (h.komponen ?? '').toLowerCase().includes(q) ||
@@ -417,6 +420,8 @@ export function RfuHistoryView({
       jamRfu: item.jamRfu,
       lokasi: item.lokasi ?? '',
       mrNumbers: item.mrNumbers ?? [],
+      partName: item.partName ?? '',
+      waitingPartMinutes: item.waitingPartMinutes ?? 0,
       keterangan: item.keterangan ?? '',
       komponen: item.komponen ?? '',
       subKomponen: item.subKomponen ?? '',
@@ -438,6 +443,8 @@ export function RfuHistoryView({
       jamRfu: editDraft.jamRfu,
       lokasi: editDraft.lokasi,
       mrNumbers: editDraft.mrNumbers,
+      partName: editDraft.partName,
+      waitingPartMinutes: Math.max(0, Math.round(editDraft.waitingPartMinutes || 0)),
       keterangan: editDraft.keterangan,
       komponen: editDraft.komponen,
       subKomponen: editDraft.subKomponen,
@@ -868,9 +875,7 @@ export function RfuHistoryView({
               ]
                 .filter(Boolean)
                 .join(' → ');
-              const durText = formatDurationId(
-                calculateDurationMinutes(item.tanggalBd, item.jamBd, item.tanggalRfu, item.jamRfu)
-              );
+              const durText = formatDurationId(computeRfuTimeSplit(item).totalMinutes);
 
               return (
                 <article key={item.id} className="p-3.5 space-y-2.5">
@@ -947,6 +952,12 @@ export function RfuHistoryView({
                           {formatMrNumbers(item.mrNumbers, '—')}
                         </span>
                       </p>
+                      {item.partName?.trim() && (
+                        <p className="text-slate-600">
+                          <span className="text-slate-400">Part:</span>{' '}
+                          <span className="text-slate-800 font-medium">{item.partName}</span>
+                        </p>
+                      )}
                       {item.picMekanik?.trim() && (
                         <p className="text-slate-600">
                           <span className="text-slate-400">PIC:</span>{' '}
@@ -954,6 +965,13 @@ export function RfuHistoryView({
                         </p>
                       )}
                     </div>
+
+                    {(item.waitingPartMinutes ?? 0) > 0 && (
+                      <p className="text-[11px] font-mono tabular-nums text-amber-800">
+                        Tunggu Part: <strong>{formatDurationId(item.waitingPartMinutes ?? 0)}</strong> · Kerja Mekanik:{' '}
+                        <strong>{formatDurationId(computeRfuTimeSplit(item).activeRepairMinutes)}</strong>
+                      </p>
+                    )}
 
                     {item.keterangan?.trim() && (
                       <p className="text-slate-800 leading-relaxed">
@@ -1029,9 +1047,8 @@ export function RfuHistoryView({
                 </tr>
               ) : (
                 filtered.map((item, idx) => {
-                  const durText = formatDurationId(
-                    calculateDurationMinutes(item.tanggalBd, item.jamBd, item.tanggalRfu, item.jamRfu)
-                  );
+                  const split = computeRfuTimeSplit(item);
+                  const durText = formatDurationId(split.totalMinutes);
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/80 align-top">
                       <td className="py-2.5 pl-4 pr-2 font-mono tabular-nums text-slate-400">
@@ -1052,13 +1069,23 @@ export function RfuHistoryView({
                         {formatReadableDateId(item.tanggalRfu)} · {item.jamRfu}
                       </td>
                       <td className="py-2.5 px-2 font-mono tabular-nums text-slate-800 font-semibold whitespace-nowrap">
-                        {durText}
+                        <div>{durText}</div>
+                        {split.waitingPartMinutes > 0 && (
+                          <div className="text-[10px] font-normal text-amber-800 mt-0.5">
+                            Part: {formatDurationId(split.waitingPartMinutes)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 px-2 text-slate-700">
                         {item.lokasi?.trim() ? item.lokasi : '—'}
                       </td>
                       <td className="py-2.5 px-2 font-mono tabular-nums text-slate-800">
-                        {formatMrNumbers(item.mrNumbers, '—')}
+                        <div>{formatMrNumbers(item.mrNumbers, '—')}</div>
+                        {item.partName?.trim() && (
+                          <div className="font-sans text-[10px] text-slate-500 mt-0.5">
+                            {item.partName}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 px-2 text-slate-800">
                         {item.keterangan?.trim() ? item.keterangan : '—'}
@@ -1303,6 +1330,46 @@ export function RfuHistoryView({
                     onChange={(e) => setEditDraft({ ...editDraft, picMekanik: e.target.value })}
                     placeholder="Nama mekanik..."
                     className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="edit-rfu-partname"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    NAMA PART UTAMA
+                  </label>
+                  <input
+                    id="edit-rfu-partname"
+                    type="text"
+                    value={editDraft.partName}
+                    onChange={(e) => setEditDraft({ ...editDraft, partName: e.target.value })}
+                    placeholder="Nama sparepart utama (jika ada)..."
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="edit-rfu-waitmins"
+                    className="block text-xs font-semibold text-slate-700 mb-1"
+                  >
+                    TUNGGU PART (MENIT)
+                  </label>
+                  <input
+                    id="edit-rfu-waitmins"
+                    type="number"
+                    min={0}
+                    value={editDraft.waitingPartMinutes}
+                    onChange={(e) =>
+                      setEditDraft({
+                        ...editDraft,
+                        waitingPartMinutes: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                    className="w-full px-3 py-1.5 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
                 </div>
               </div>

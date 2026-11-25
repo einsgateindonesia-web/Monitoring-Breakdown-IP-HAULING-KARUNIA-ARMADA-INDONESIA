@@ -22,6 +22,8 @@ import {
 import { BdStatus, BreakdownRecord, FleetGroup, FleetUnit } from '../types/fleet';
 import {
   calculateDurationMinutes,
+  computeBdTimeSplit,
+  computeEtrStatus,
   formatDurationId,
   getAgingSeverity,
   getCurrentTimeHHMM,
@@ -38,6 +40,7 @@ interface InputBdPanelProps {
     jamBd: string;
     lokasi: string;
     mrNumbers: string[];
+    partName?: string;
     keterangan: string;
     status: BdStatus;
     picMekanik?: string;
@@ -51,6 +54,7 @@ interface InputBdPanelProps {
         | 'jamBd'
         | 'lokasi'
         | 'mrNumbers'
+        | 'partName'
         | 'keterangan'
         | 'status'
         | 'picMekanik'
@@ -86,6 +90,7 @@ export function InputBdPanel({
   const [jamBd, setJamBd] = useState(getCurrentTimeHHMM());
   const [lokasi, setLokasi] = useState('');
   const [mrNumbers, setMrNumbers] = useState<string[]>([]);
+  const [partName, setPartName] = useState('');
   const [keterangan, setKeterangan] = useState('');
   const [status, setStatus] = useState<BdStatus>('B0');
   const [picMekanik, setPicMekanik] = useState('');
@@ -131,6 +136,7 @@ export function InputBdPanel({
         rec.unitCode.toLowerCase().includes(q) ||
         (rec.lokasi ?? '').toLowerCase().includes(q) ||
         mrJoined.includes(q) ||
+        (rec.partName ?? '').toLowerCase().includes(q) ||
         rec.keterangan.toLowerCase().includes(q) ||
         (rec.picMekanik ?? '').toLowerCase().includes(q) ||
         (rec.partNote ?? '').toLowerCase().includes(q) ||
@@ -161,6 +167,7 @@ export function InputBdPanel({
       jamBd: jamBd || getCurrentTimeHHMM(),
       lokasi,
       mrNumbers,
+      partName,
       keterangan,
       status,
       picMekanik,
@@ -173,6 +180,7 @@ export function InputBdPanel({
     setUnitInput('');
     setLokasi('');
     setMrNumbers([]);
+    setPartName('');
     setKeterangan('');
     setPicMekanik('');
     setEtr('');
@@ -434,8 +442,8 @@ export function InputBdPanel({
           </div>
         </div>
 
-        {/* Row 2: Wide Keterangan, PIC Mekanik, ETR & Submit */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.5fr)_1fr_0.7fr_auto] gap-2.5 items-end pt-0.5">
+        {/* Row 2: Wide Keterangan, Nama Part Utama, PIC Mekanik, ETR & Submit */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_1.1fr_0.9fr_0.65fr_auto] gap-2.5 items-end pt-0.5">
           {/* KETERANGAN (Luas & Nyaman dibaca) */}
           <div className="sm:col-span-2 lg:col-span-1">
             <label
@@ -456,6 +464,24 @@ export function InputBdPanel({
 
           <div>
             <label
+              htmlFor="quick-part-name"
+              className="block text-[11px] font-semibold text-slate-600 mb-1"
+            >
+              NAMA PART UTAMA
+            </label>
+            <input
+              id="quick-part-name"
+              type="text"
+              value={partName}
+              onChange={(e) => setPartName(e.target.value)}
+              placeholder="Part yang ditunggu (opsional)"
+              aria-label="Nama Part Utama"
+              className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
+          </div>
+
+          <div>
+            <label
               htmlFor="quick-pic-mekanik"
               className="block text-[11px] font-semibold text-slate-600 mb-1"
             >
@@ -466,7 +492,7 @@ export function InputBdPanel({
               type="text"
               value={picMekanik}
               onChange={(e) => setPicMekanik(e.target.value)}
-              placeholder="Nama mekanik (opsional)"
+              placeholder="Nama mekanik"
               aria-label="PIC Mekanik"
               className="w-full px-2.5 py-2 md:py-1.5 text-sm md:text-xs bg-white border border-slate-300 rounded-md text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
@@ -613,20 +639,15 @@ export function InputBdPanel({
         ) : (
           filteredBdRecords.map((rec, idx) => {
             const stStyle = BD_STATUS_STYLES[rec.status];
-            const durMin = calculateDurationMinutes(
-              rec.tanggalBd,
-              rec.jamBd,
-              undefined,
-              undefined,
-              nowMs
-            );
-            const severity = getAgingSeverity(durMin);
+            const split = computeBdTimeSplit(rec, nowMs);
+            const severity = getAgingSeverity(split.totalMinutes);
+            const etrStatus = computeEtrStatus(rec.tanggalBd, rec.jamBd, rec.etr, nowMs);
 
             return (
               <div key={rec.id} className="p-3.5 space-y-3 bg-white">
                 {/* Card Top Row: No, Unit, Durasi, & RFU / Delete Actions */}
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center flex-wrap gap-1.5 min-w-0">
                     <span className="text-xs font-mono tabular-nums text-slate-400">
                       #{idx + 1}
                     </span>
@@ -642,8 +663,13 @@ export function InputBdPanel({
                           : 'bg-slate-50 text-slate-600 border-slate-200'
                       }`}
                     >
-                      {formatDurationId(durMin)}
+                      {formatDurationId(split.totalMinutes)}
                     </span>
+                    {etrStatus?.isOverdue && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-red-50 text-red-700 border border-red-200 rounded shrink-0">
+                        Lewat ETR +{formatDurationId(etrStatus.deltaMinutes)}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -759,6 +785,28 @@ export function InputBdPanel({
 
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                      NAMA PART UTAMA
+                    </label>
+                    <input
+                      type="text"
+                      value={rec.partName ?? ''}
+                      aria-label={`Nama part utama ${rec.unitCode}`}
+                      placeholder="Nama part yang dibutuhkan..."
+                      onChange={(e) => onUpdateBd(rec.id, { partName: e.target.value })}
+                      className="w-full px-2.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+
+                  {(split.waitingPartMinutes > 0 || split.isWaitingNow) && (
+                    <div className="px-2.5 py-1.5 bg-amber-50/70 border border-amber-200 rounded text-[11px] font-mono tabular-nums text-amber-900">
+                      Tunggu Part: <strong>{formatDurationId(split.waitingPartMinutes)}</strong>
+                      {split.isWaitingNow ? ' (aktif)' : ''} · Kerja Mekanik:{' '}
+                      <strong>{formatDurationId(split.activeRepairMinutes)}</strong>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
                       KETERANGAN
                     </label>
                     <input
@@ -786,7 +834,7 @@ export function InputBdPanel({
               <th className="py-2 px-1.5 w-[96px]">UNIT BD</th>
               <th className="py-2 px-1.5 w-[86px]">JAM &amp; DURASI</th>
               <th className="py-2 px-1.5 w-[112px] xl:w-[126px]">POSISI / LOKASI</th>
-              <th className="py-2 px-1.5 w-[124px] xl:w-[138px]">NOMOR MR</th>
+              <th className="py-2 px-1.5 w-[140px] xl:w-[158px]">MR &amp; NAMA PART</th>
               <th className="py-2 px-1.5 w-[116px] xl:w-[130px]">PIC &amp; ETR</th>
               <th className="py-2 px-1.5 min-w-[200px]">KETERANGAN</th>
               <th className="py-2 px-1.5 w-[146px] xl:w-[172px]">STATUS</th>
@@ -817,14 +865,9 @@ export function InputBdPanel({
             ) : (
               filteredBdRecords.map((rec, idx) => {
                 const stStyle = BD_STATUS_STYLES[rec.status];
-                const durMin = calculateDurationMinutes(
-                  rec.tanggalBd,
-                  rec.jamBd,
-                  undefined,
-                  undefined,
-                  nowMs
-                );
-                const severity = getAgingSeverity(durMin);
+                const split = computeBdTimeSplit(rec, nowMs);
+                const severity = getAgingSeverity(split.totalMinutes);
+                const etrStatus = computeEtrStatus(rec.tanggalBd, rec.jamBd, rec.etr, nowMs);
 
                 return (
                   <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors align-top">
@@ -859,8 +902,19 @@ export function InputBdPanel({
                               : 'bg-slate-50 text-slate-600 border-slate-200'
                           }`}
                         >
-                          {formatDurationId(durMin)}
+                          {formatDurationId(split.totalMinutes)}
                         </span>
+                        {(split.waitingPartMinutes > 0 || split.isWaitingNow) && (
+                          <div className="text-[10px] font-mono tabular-nums leading-tight space-y-0.5">
+                            <div className="text-amber-700 font-medium">
+                              Part: {formatDurationId(split.waitingPartMinutes)}
+                              {split.isWaitingNow ? '●' : ''}
+                            </div>
+                            <div className="text-slate-500">
+                              Kerja: {formatDurationId(split.activeRepairMinutes)}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </td>
 
@@ -876,11 +930,19 @@ export function InputBdPanel({
                       />
                     </td>
 
-                    <td className="py-2 px-1.5">
+                    <td className="py-2 px-1.5 space-y-1">
                       <InlineTableMrCell
                         unitCode={rec.unitCode}
                         value={rec.mrNumbers ?? []}
                         onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
+                      />
+                      <input
+                        type="text"
+                        value={rec.partName ?? ''}
+                        aria-label={`Nama part utama ${rec.unitCode}`}
+                        placeholder="Nama part..."
+                        onChange={(e) => onUpdateBd(rec.id, { partName: e.target.value })}
+                        className="w-full px-1.5 py-0.5 text-[11px] bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-700 placeholder:text-slate-400"
                       />
                     </td>
 
@@ -903,9 +965,16 @@ export function InputBdPanel({
                             ariaLabel={`ETR ${rec.unitCode}`}
                             placeholder="--:--"
                             onChange={(val) => onUpdateBd(rec.id, { etr: val })}
-                            className="w-full px-1 py-0.5 text-[11px] font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-700"
+                            className={`w-full px-1 py-0.5 text-[11px] font-mono tabular-nums bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none ${
+                              etrStatus?.isOverdue ? 'text-red-700 font-semibold' : 'text-slate-700'
+                            }`}
                           />
                         </div>
+                        {etrStatus?.isOverdue && (
+                          <div className="px-1.5 text-[10px] font-mono font-semibold text-red-700">
+                            +{formatDurationId(etrStatus.deltaMinutes)} lewat ETR
+                          </div>
+                        )}
                       </div>
                     </td>
 

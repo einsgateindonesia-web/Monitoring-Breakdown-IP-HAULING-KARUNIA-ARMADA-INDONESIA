@@ -8,7 +8,7 @@ import {
 import { BreakdownRecord, PartStatus } from '../types/fleet';
 import {
   buildSparepartWhatsappReport,
-  calculateDurationMinutes,
+  computeBdTimeSplit,
   formatDurationId,
   getAgingSeverity,
   normalizeMrList,
@@ -25,6 +25,7 @@ interface SparepartMrTrackingSectionProps {
         | 'jamBd'
         | 'lokasi'
         | 'mrNumbers'
+        | 'partName'
         | 'keterangan'
         | 'status'
         | 'picMekanik'
@@ -95,6 +96,7 @@ export function SparepartMrTrackingSection({
       return (
         rec.unitCode.toLowerCase().includes(q) ||
         mrs.join(' ').toLowerCase().includes(q) ||
+        (rec.partName ?? '').toLowerCase().includes(q) ||
         rec.keterangan.toLowerCase().includes(q) ||
         (rec.partNote ?? '').toLowerCase().includes(q) ||
         (rec.picMekanik ?? '').toLowerCase().includes(q)
@@ -128,7 +130,7 @@ export function SparepartMrTrackingSection({
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Pantau unit BD berstatus B1 (Waiting Part) atau yang memiliki nomor Material Request (MR).
+            Pantau unit B1 (Waiting Part), Nomor MR, Nama Part Utama, serta durasi tunggu part vs kerja mekanik.
           </p>
         </div>
 
@@ -251,14 +253,8 @@ export function SparepartMrTrackingSection({
               const pStyle = PART_STATUS_STYLES[pStatus];
               const mrs = normalizeMrList(rec.mrNumbers);
               const missingMrAlert = rec.status === 'B1' && mrs.length === 0;
-              const durMin = calculateDurationMinutes(
-                rec.tanggalBd,
-                rec.jamBd,
-                undefined,
-                undefined,
-                nowMs
-              );
-              const severity = getAgingSeverity(durMin);
+              const split = computeBdTimeSplit(rec, nowMs);
+              const severity = getAgingSeverity(split.totalMinutes);
 
               return (
                 <div key={rec.id} className="p-3.5 space-y-2.5 bg-white">
@@ -283,6 +279,15 @@ export function SparepartMrTrackingSection({
                       <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                         {BD_STATUS_LABELS[rec.status]} · {rec.keterangan || 'Tanpa keterangan'}
                       </p>
+                      {(split.waitingPartMinutes > 0 || split.isWaitingNow) && (
+                        <p className="text-[11px] font-mono tabular-nums mt-0.5 text-amber-800">
+                          Tunggu Part: <strong>{formatDurationId(split.waitingPartMinutes)}</strong>
+                          {split.isWaitingNow ? ' (berjalan)' : ''} · Kerja:{' '}
+                          <strong className="text-slate-800">
+                            {formatDurationId(split.activeRepairMinutes)}
+                          </strong>
+                        </p>
+                      )}
                     </div>
 
                     <span
@@ -294,19 +299,35 @@ export function SparepartMrTrackingSection({
                           : 'bg-slate-50 text-slate-600 border-slate-200'
                       }`}
                     >
-                      {formatDurationId(durMin)}
+                      {formatDurationId(split.totalMinutes)}
                     </span>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
-                      NOMOR MR
-                    </label>
-                    <InlineTableMrCell
-                      unitCode={rec.unitCode}
-                      value={mrs}
-                      onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
-                    />
+                  <div className="grid grid-cols-1 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                        NOMOR MR
+                      </label>
+                      <InlineTableMrCell
+                        unitCode={rec.unitCode}
+                        value={mrs}
+                        onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">
+                        NAMA PART UTAMA
+                      </label>
+                      <input
+                        type="text"
+                        value={rec.partName ?? ''}
+                        aria-label={`Nama part utama ${rec.unitCode}`}
+                        placeholder="Nama sparepart yang dipesan..."
+                        onChange={(e) => onUpdateBd(rec.id, { partName: e.target.value })}
+                        className="w-full px-2.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-600 focus:outline-none text-slate-900 placeholder:text-slate-400"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-2">
@@ -359,10 +380,11 @@ export function SparepartMrTrackingSection({
                 <tr>
                   <th className="py-2 pl-4 pr-2 w-10 font-mono">NO</th>
                   <th className="py-2 px-2 w-28">UNIT BD</th>
-                  <th className="py-2 px-2 w-24">AGING BD</th>
-                  <th className="py-2 px-2 w-48">NOMOR MR</th>
-                  <th className="py-2 px-2 w-48">STATUS SPAREPART</th>
-                  <th className="py-2 px-2 w-56">CATATAN PART / ETA</th>
+                  <th className="py-2 px-2 w-36">AGING &amp; TUNGGU PART</th>
+                  <th className="py-2 px-2 w-44">NOMOR MR</th>
+                  <th className="py-2 px-2 w-44">NAMA PART UTAMA</th>
+                  <th className="py-2 px-2 w-44">STATUS SPAREPART</th>
+                  <th className="py-2 px-2 w-48">CATATAN PART / ETA</th>
                   <th className="py-2 pl-2 pr-4">PROBLEM &amp; PIC</th>
                 </tr>
               </thead>
@@ -372,17 +394,11 @@ export function SparepartMrTrackingSection({
                   const pStyle = PART_STATUS_STYLES[pStatus];
                   const mrs = normalizeMrList(rec.mrNumbers);
                   const missingMrAlert = rec.status === 'B1' && mrs.length === 0;
-                  const durMin = calculateDurationMinutes(
-                    rec.tanggalBd,
-                    rec.jamBd,
-                    undefined,
-                    undefined,
-                    nowMs
-                  );
-                  const severity = getAgingSeverity(durMin);
+                  const split = computeBdTimeSplit(rec, nowMs);
+                  const severity = getAgingSeverity(split.totalMinutes);
 
                   return (
-                    <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors align-top">
                       <td className="py-2 pl-4 pr-2 font-mono tabular-nums text-slate-400">
                         {idx + 1}
                       </td>
@@ -409,14 +425,35 @@ export function SparepartMrTrackingSection({
                               : 'bg-slate-50 text-slate-600 border-slate-200'
                           }`}
                         >
-                          {formatDurationId(durMin)}
+                          Total {formatDurationId(split.totalMinutes)}
                         </span>
+                        {(split.waitingPartMinutes > 0 || split.isWaitingNow) && (
+                          <div className="mt-1 space-y-0.5 text-[10px] font-mono tabular-nums">
+                            <div className={split.isWaitingNow ? 'text-amber-700 font-semibold' : 'text-amber-700'}>
+                              Part: {formatDurationId(split.waitingPartMinutes)}
+                              {split.isWaitingNow ? ' ●' : ''}
+                            </div>
+                            <div className="text-slate-500">
+                              Kerja: {formatDurationId(split.activeRepairMinutes)}
+                            </div>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 px-2">
                         <InlineTableMrCell
                           unitCode={rec.unitCode}
                           value={mrs}
                           onChange={(nextMr) => onUpdateBd(rec.id, { mrNumbers: nextMr })}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          value={rec.partName ?? ''}
+                          aria-label={`Nama part utama ${rec.unitCode}`}
+                          placeholder="Nama part..."
+                          onChange={(e) => onUpdateBd(rec.id, { partName: e.target.value })}
+                          className="w-full px-2 py-1 text-xs bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-600 rounded focus:outline-none text-slate-900 placeholder:text-slate-400"
                         />
                       </td>
                       <td className="py-2 px-2">
