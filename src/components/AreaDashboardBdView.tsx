@@ -8,7 +8,7 @@ import {
   HourlySlotOverride,
   RfuHistoryRecord,
 } from '../types/fleet';
-import { buildWhatsappReport, getShiftRfuRecords } from '../utils/fleetUtils';
+import { buildWhatsappReport } from '../utils/fleetUtils';
 import { AnalyticsParetoSection } from './AnalyticsParetoSection';
 import { HourlyPaMonitoringSection } from './HourlyPaMonitoringSection';
 
@@ -30,7 +30,7 @@ interface AreaDashboardBdViewProps {
     bdCount: number;
   }) => void;
   onClearHourlyOverride: (key: string) => void;
-  onCopyWaReport: (opts?: { includeReadyUnits?: boolean; includeRfuUnits?: boolean }) => void;
+  onCopyWaReport: (opts?: { includeReadyUnits?: boolean; includePicEtr?: boolean }) => void;
   onExportCsv: () => void;
   onOpenPdfReport: () => void;
   copiedWa: boolean;
@@ -99,7 +99,7 @@ export function AreaDashboardBdView({
   })();
 
   const [includeReadyInWa, setIncludeReadyInWa] = useState(true);
-  const [includeRfuInWa, setIncludeRfuInWa] = useState(true);
+  const [includePicEtrInWa, setIncludePicEtrInWa] = useState(true);
   const [waClockTick, setWaClockTick] = useState(0);
 
   useEffect(() => {
@@ -108,11 +108,9 @@ export function AreaDashboardBdView({
   }, []);
 
   void waClockTick;
-  const shiftRfuCount = getShiftRfuRecords(rfuHistory, shiftDate).length;
   const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount, {
     includeReadyUnits: includeReadyInWa,
-    includeRfuUnits: includeRfuInWa,
-    rfuHistory,
+    includePicEtr: includePicEtrInWa,
     shiftDate,
   });
 
@@ -155,7 +153,7 @@ export function AreaDashboardBdView({
             onClick={() =>
               onCopyWaReport({
                 includeReadyUnits: includeReadyInWa,
-                includeRfuUnits: includeRfuInWa,
+                includePicEtr: includePicEtrInWa,
               })
             }
             className="col-span-2 sm:col-span-1 min-h-[42px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
@@ -344,7 +342,7 @@ export function AreaDashboardBdView({
                 onClick={() =>
                   onCopyWaReport({
                     includeReadyUnits: includeReadyInWa,
-                    includeRfuUnits: includeRfuInWa,
+                    includePicEtr: includePicEtrInWa,
                   })
                 }
                 className="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer shrink-0"
@@ -356,11 +354,11 @@ export function AreaDashboardBdView({
               <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={includeRfuInWa}
-                  onChange={(e) => setIncludeRfuInWa(e.target.checked)}
+                  checked={includePicEtrInWa}
+                  onChange={(e) => setIncludePicEtrInWa(e.target.checked)}
                   className="rounded border-slate-300 text-blue-700 focus:ring-blue-600 cursor-pointer"
                 />
-                <span>Tampilkan Daftar Unit RFU Shift Ini ({shiftRfuCount} unit)</span>
+                <span>Tampilkan Nama PIC &amp; Estimasi Ready Unit ({bdRecords.length} unit)</span>
               </label>
               <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
                 <input

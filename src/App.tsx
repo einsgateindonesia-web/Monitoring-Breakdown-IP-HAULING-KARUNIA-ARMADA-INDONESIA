@@ -1344,16 +1344,15 @@ export default function App() {
   };
 
   const handleCopyWaReport = async (
-    opts?: { includeReadyUnits?: boolean; includeRfuUnits?: boolean }
+    opts?: { includeReadyUnits?: boolean; includePicEtr?: boolean }
   ) => {
     const isPlainOpts =
       typeof opts === 'object' && opts !== null && !('nativeEvent' in opts);
     const includeReadyUnits = isPlainOpts ? opts.includeReadyUnits ?? true : true;
-    const includeRfuUnits = isPlainOpts ? opts.includeRfuUnits ?? true : true;
+    const includePicEtr = isPlainOpts ? opts.includePicEtr ?? true : true;
     const report = buildWhatsappReport(runningUnits, bdRecords, masterUnits.length, {
       includeReadyUnits,
-      includeRfuUnits,
-      rfuHistory,
+      includePicEtr,
       shiftDate,
     });
     try {

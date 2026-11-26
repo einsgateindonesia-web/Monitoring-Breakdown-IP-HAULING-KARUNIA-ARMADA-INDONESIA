@@ -245,13 +245,12 @@ export function buildWhatsappReport(
   totalFleetCount: number,
   options?: {
     includeReadyUnits?: boolean;
-    includeRfuUnits?: boolean;
-    rfuHistory?: RfuHistoryRecord[];
+    includePicEtr?: boolean;
     shiftDate?: string;
   }
 ): string {
   const includeReadyUnits = options?.includeReadyUnits ?? true;
-  const includeRfuUnits = options?.includeRfuUnits ?? true;
+  const includePicEtr = options?.includePicEtr ?? true;
   const now = new Date();
   const nowMs = now.getTime();
   const effectiveShiftDate = options?.shiftDate?.trim() || getOperationalShiftDateLocal(now);
@@ -285,8 +284,6 @@ export function buildWhatsappReport(
     (r) => r.status === 'B1' || normalizeMrList(r.mrNumbers).length > 0
   ).length;
 
-  const shiftRfuRecords = getShiftRfuRecords(options?.rfuHistory ?? [], effectiveShiftDate);
-
   // Group and sort BD units following BD_STATUS_CATALOG order (Distribusi Status Unit BD yang ada)
   const groupedByStatus = BD_STATUS_CATALOG.map((meta) => {
     const items = bdRecords
@@ -300,6 +297,8 @@ export function buildWhatsappReport(
     return { meta, items };
   }).filter((group) => group.items.length > 0);
 
+  const sortedBdRecords = groupedByStatus.flatMap((g) => g.items);
+
   const lines: string[] = [
     `*LAPORAN STATUS ARMADA & UNIT BD*`,
     `Tanggal : ${dateStr} | Pukul : ${timeStr}`,
@@ -311,7 +310,6 @@ export function buildWhatsappReport(
     `Unit BD      : ${bdRecords.length} Unit (Aging ≥6j: ${agingOver6h} | Track Part/MR: ${waitingPartCount})`,
     `• PMSC : ${pmscRun}/${pmscTotal} Running (${pmscBd} BD)`,
     `• PMVV : ${pmvvRun}/${pmvvTotal} Running (${pmvvBd} BD)`,
-    `• RFU Shift Ini : ${shiftRfuRecords.length} Unit`,
   ];
 
   if (groupedByStatus.length > 0) {
@@ -348,21 +346,17 @@ export function buildWhatsappReport(
     });
   }
 
-  if (includeRfuUnits) {
-    lines.push(``, `────────────────────`, `*DAFTAR UNIT RFU SHIFT INI (${shiftRfuRecords.length} UNIT)*`);
-    if (shiftRfuRecords.length === 0) {
-      lines.push(`Belum ada unit yang tercatat RFU pada shift ini.`);
+  if (includePicEtr) {
+    lines.push(``, `────────────────────`, `*NAMA PIC & ESTIMASI READY UNIT (${sortedBdRecords.length} UNIT)*`);
+    if (sortedBdRecords.length === 0) {
+      lines.push(`Tidak ada unit BD (seluruh unit Ready).`);
     } else {
-      shiftRfuRecords.forEach((rfu, idx) => {
-        const split = computeRfuTimeSplit(rfu);
-        const durText = formatDurationId(split.totalMinutes);
-        const activity =
-          rfu.activityPerbaikan?.trim() || rfu.keterangan?.trim() || '-';
-        const picPart = rfu.picMekanik?.trim() ? ` | PIC: ${rfu.picMekanik.trim()}` : '';
+      sortedBdRecords.forEach((rec, idx) => {
+        const pic = rec.picMekanik?.trim() ? rec.picMekanik.trim() : '-';
+        const etr = rec.etr?.trim() ? rec.etr.trim() : '-';
         lines.push(
-          `${idx + 1}. *${rfu.unitCode}* | RFU: ${rfu.jamRfu || '-'} (BD: ${rfu.jamBd || '-'} · Dur: ${durText})${picPart}`
+          `${idx + 1}. *${rec.unitCode}* [${rec.status}] | PIC: ${pic} | Estimasi Ready: ${etr}`
         );
-        lines.push(`   • Perbaikan/Ket: ${activity}`);
       });
     }
   }
