@@ -347,15 +347,14 @@ export function buildWhatsappReport(
   }
 
   if (includePicEtr) {
-    lines.push(``, `────────────────────`, `*NAMA PIC & ESTIMASI READY UNIT (${sortedBdRecords.length} UNIT)*`);
+    lines.push(``, `────────────────────`, `*ESTIMASI READY UNIT (${sortedBdRecords.length} UNIT)*`);
     if (sortedBdRecords.length === 0) {
       lines.push(`Tidak ada unit BD (seluruh unit Ready).`);
     } else {
       sortedBdRecords.forEach((rec, idx) => {
-        const pic = rec.picMekanik?.trim() ? rec.picMekanik.trim() : '-';
         const etr = rec.etr?.trim() ? rec.etr.trim() : '-';
         lines.push(
-          `${idx + 1}. *${rec.unitCode}* [${rec.status}] | PIC: ${pic} | Estimasi Ready: ${etr}`
+          `${idx + 1}. *${rec.unitCode}* [${rec.status}] | Estimasi Ready: ${etr}`
         );
       });
     }

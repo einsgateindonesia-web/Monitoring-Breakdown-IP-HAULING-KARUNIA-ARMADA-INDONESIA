@@ -358,7 +358,7 @@ export function AreaDashboardBdView({
                   onChange={(e) => setIncludePicEtrInWa(e.target.checked)}
                   className="rounded border-slate-300 text-blue-700 focus:ring-blue-600 cursor-pointer"
                 />
-                <span>Tampilkan Nama PIC &amp; Estimasi Ready Unit ({bdRecords.length} unit)</span>
+                <span>Tampilkan Estimasi Ready Unit ({bdRecords.length} unit)</span>
               </label>
               <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
                 <input
