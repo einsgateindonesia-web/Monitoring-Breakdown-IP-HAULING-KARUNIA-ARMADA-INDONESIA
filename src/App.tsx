@@ -1343,10 +1343,18 @@ export default function App() {
     showToast('Populasi armada dikembalikan ke 75 unit awal.');
   };
 
-  const handleCopyWaReport = async (includeReadyUnits?: boolean | unknown) => {
-    const includeReady = typeof includeReadyUnits === 'boolean' ? includeReadyUnits : true;
+  const handleCopyWaReport = async (
+    opts?: { includeReadyUnits?: boolean; includeRfuUnits?: boolean }
+  ) => {
+    const isPlainOpts =
+      typeof opts === 'object' && opts !== null && !('nativeEvent' in opts);
+    const includeReadyUnits = isPlainOpts ? opts.includeReadyUnits ?? true : true;
+    const includeRfuUnits = isPlainOpts ? opts.includeRfuUnits ?? true : true;
     const report = buildWhatsappReport(runningUnits, bdRecords, masterUnits.length, {
-      includeReadyUnits: includeReady,
+      includeReadyUnits,
+      includeRfuUnits,
+      rfuHistory,
+      shiftDate,
     });
     try {
       await navigator.clipboard.writeText(report);
@@ -2273,7 +2281,7 @@ export default function App() {
                   onUpdateBd={handleUpdateBd}
                   onMarkRfu={handleMarkRfu}
                   onCancelBd={handleCancelBd}
-                  onCopyWaReport={handleCopyWaReport}
+                  onCopyWaReport={() => void handleCopyWaReport()}
                   onExportCsv={() => exportBoardCsv(runningUnits, bdRecords)}
                   onOpenUploadBd={() => setUploadBdModalOpen(true)}
                   onOpenPdfReport={() => setPdfModalOpen(true)}

@@ -8,7 +8,7 @@ import {
   HourlySlotOverride,
   RfuHistoryRecord,
 } from '../types/fleet';
-import { buildWhatsappReport } from '../utils/fleetUtils';
+import { buildWhatsappReport, getShiftRfuRecords } from '../utils/fleetUtils';
 import { AnalyticsParetoSection } from './AnalyticsParetoSection';
 import { HourlyPaMonitoringSection } from './HourlyPaMonitoringSection';
 
@@ -30,7 +30,7 @@ interface AreaDashboardBdViewProps {
     bdCount: number;
   }) => void;
   onClearHourlyOverride: (key: string) => void;
-  onCopyWaReport: (includeReadyUnits?: boolean) => void;
+  onCopyWaReport: (opts?: { includeReadyUnits?: boolean; includeRfuUnits?: boolean }) => void;
   onExportCsv: () => void;
   onOpenPdfReport: () => void;
   copiedWa: boolean;
@@ -99,6 +99,7 @@ export function AreaDashboardBdView({
   })();
 
   const [includeReadyInWa, setIncludeReadyInWa] = useState(true);
+  const [includeRfuInWa, setIncludeRfuInWa] = useState(true);
   const [waClockTick, setWaClockTick] = useState(0);
 
   useEffect(() => {
@@ -107,8 +108,12 @@ export function AreaDashboardBdView({
   }, []);
 
   void waClockTick;
+  const shiftRfuCount = getShiftRfuRecords(rfuHistory, shiftDate).length;
   const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount, {
     includeReadyUnits: includeReadyInWa,
+    includeRfuUnits: includeRfuInWa,
+    rfuHistory,
+    shiftDate,
   });
 
   return (
@@ -147,7 +152,12 @@ export function AreaDashboardBdView({
           </button>
           <button
             type="button"
-            onClick={() => onCopyWaReport(includeReadyInWa)}
+            onClick={() =>
+              onCopyWaReport({
+                includeReadyUnits: includeReadyInWa,
+                includeRfuUnits: includeRfuInWa,
+              })
+            }
             className="col-span-2 sm:col-span-1 min-h-[42px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer whitespace-nowrap shrink-0"
           >
             {copiedWa ? (
@@ -331,21 +341,37 @@ export function AreaDashboardBdView({
               </div>
               <button
                 type="button"
-                onClick={() => onCopyWaReport(includeReadyInWa)}
+                onClick={() =>
+                  onCopyWaReport({
+                    includeReadyUnits: includeReadyInWa,
+                    includeRfuUnits: includeRfuInWa,
+                  })
+                }
                 className="text-xs font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer shrink-0"
               >
                 {copiedWa ? 'Tersalin' : 'Salin Teks'}
               </button>
             </div>
-            <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={includeReadyInWa}
-                onChange={(e) => setIncludeReadyInWa(e.target.checked)}
-                className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600 cursor-pointer"
-              />
-              <span>Tampilkan Daftar Unit Ready / Running ({runningUnits.length} unit)</span>
-            </label>
+            <div className="flex flex-col gap-1.5">
+              <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includeRfuInWa}
+                  onChange={(e) => setIncludeRfuInWa(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-700 focus:ring-blue-600 cursor-pointer"
+                />
+                <span>Tampilkan Daftar Unit RFU Shift Ini ({shiftRfuCount} unit)</span>
+              </label>
+              <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includeReadyInWa}
+                  onChange={(e) => setIncludeReadyInWa(e.target.checked)}
+                  className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600 cursor-pointer"
+                />
+                <span>Tampilkan Daftar Unit Ready / Running ({runningUnits.length} unit)</span>
+              </label>
+            </div>
           </div>
           <div className="p-4 space-y-3">
             <pre className="p-3.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed max-h-[520px] overflow-auto ops-scroll">
