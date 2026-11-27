@@ -306,7 +306,7 @@ export function buildWhatsappReport(
   const sortedBdRecords = groupedByStatus.flatMap((g) => g.items);
 
   const lines: string[] = [
-    `*LAPORAN STATUS ARMADA & UNIT BD*`,
+    `*LAPORAN STATUS & UNIT BD*`,
     `Tanggal : ${dateStr} | Pukul : ${timeStr}`,
     `Shift   : ${formatReadableDateId(effectiveShiftDate)} (06:00 - 06:00)`,
     ``,
