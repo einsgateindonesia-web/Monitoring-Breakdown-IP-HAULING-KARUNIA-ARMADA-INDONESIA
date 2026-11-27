@@ -8,7 +8,7 @@ import {
   HourlySlotOverride,
   RfuHistoryRecord,
 } from '../types/fleet';
-import { buildWhatsappReport } from '../utils/fleetUtils';
+import { buildWhatsappReport, getEstimasiReadyBdRecords } from '../utils/fleetUtils';
 import { AnalyticsParetoSection } from './AnalyticsParetoSection';
 import { HourlyPaMonitoringSection } from './HourlyPaMonitoringSection';
 
@@ -108,6 +108,7 @@ export function AreaDashboardBdView({
   }, []);
 
   void waClockTick;
+  const estimasiReadyCount = getEstimasiReadyBdRecords(bdRecords).length;
   const waReportText = buildWhatsappReport(runningUnits, bdRecords, totalFleetCount, {
     includeReadyUnits: includeReadyInWa,
     includePicEtr: includePicEtrInWa,
@@ -358,7 +359,7 @@ export function AreaDashboardBdView({
                   onChange={(e) => setIncludePicEtrInWa(e.target.checked)}
                   className="rounded border-slate-300 text-blue-700 focus:ring-blue-600 cursor-pointer"
                 />
-                <span>Tampilkan Estimasi Ready Unit ({bdRecords.length} unit)</span>
+                <span>Tampilkan Estimasi Ready Unit ({estimasiReadyCount} unit)</span>
               </label>
               <label className="inline-flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
                 <input

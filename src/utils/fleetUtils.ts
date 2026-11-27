@@ -239,6 +239,12 @@ export function getShiftRfuRecords(
     });
 }
 
+export function getEstimasiReadyBdRecords(bdRecords: BreakdownRecord[]): BreakdownRecord[] {
+  return bdRecords.filter(
+    (rec) => rec.status !== 'B1' && !isActivelyWaitingPart(rec.status, rec.partStatus)
+  );
+}
+
 export function buildWhatsappReport(
   runningUnits: FleetUnit[],
   bdRecords: BreakdownRecord[],
@@ -346,12 +352,20 @@ export function buildWhatsappReport(
     });
   }
 
+  const estimasiReadyRecords = getEstimasiReadyBdRecords(sortedBdRecords);
+
   if (includePicEtr) {
-    lines.push(``, `────────────────────`, `*ESTIMASI READY UNIT (${sortedBdRecords.length} UNIT)*`);
+    lines.push(
+      ``,
+      `────────────────────`,
+      `*ESTIMASI READY UNIT (${estimasiReadyRecords.length} UNIT)*`
+    );
     if (sortedBdRecords.length === 0) {
       lines.push(`Tidak ada unit BD (seluruh unit Ready).`);
+    } else if (estimasiReadyRecords.length === 0) {
+      lines.push(`Tidak ada unit BD di luar status B1 / Waiting Part.`);
     } else {
-      sortedBdRecords.forEach((rec, idx) => {
+      estimasiReadyRecords.forEach((rec, idx) => {
         const etr = rec.etr?.trim() ? rec.etr.trim() : '-';
         lines.push(
           `${idx + 1}. *${rec.unitCode}* [${rec.status}] | Estimasi Ready: ${etr}`
