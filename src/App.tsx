@@ -2250,9 +2250,9 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4 items-stretch">
+            <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4 items-start">
               <div
-                className={`order-2 xl:order-1 ${
+                className={`order-2 xl:order-1 xl:sticky xl:top-4 ${
                   mobileBoardPanel === 'running' ? 'block' : 'hidden lg:block'
                 }`}
               >

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -201,11 +201,75 @@ export function InputBdPanel({
   const [onlyAgingOver6h, setOnlyAgingOver6h] = useState(false);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [recentNewIds, setRecentNewIds] = useState<string[]>([]);
+  const knownBdIdsRef = useRef<Set<string>>(new Set());
+  const hasHydratedRef = useRef(false);
+  const justSubmittedRef = useRef(false);
+  const listTopRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const badgeTimersRef = useRef<number[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 60000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      badgeTimersRef.current.forEach((t) => window.clearTimeout(t));
+      badgeTimersRef.current = [];
+    };
   }, []);
+
+  useEffect(() => {
+    const currentIds = new Set(bdRecords.map((rec) => rec.id));
+
+    if (!hasHydratedRef.current) {
+      if (bdRecords.length > 0 || justSubmittedRef.current) {
+        hasHydratedRef.current = true;
+        if (!justSubmittedRef.current) {
+          knownBdIdsRef.current = currentIds;
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    const addedIds = bdRecords
+      .filter((rec) => !knownBdIdsRef.current.has(rec.id))
+      .map((rec) => rec.id);
+
+    knownBdIdsRef.current = currentIds;
+
+    if (addedIds.length > 0) {
+      setRecentNewIds((prev) => {
+        const merged = [
+          ...addedIds,
+          ...prev.filter((id) => currentIds.has(id) && !addedIds.includes(id)),
+        ];
+        return merged.slice(0, 10);
+      });
+
+      if (tableScrollRef.current) {
+        tableScrollRef.current.scrollTop = 0;
+      }
+      if (justSubmittedRef.current) {
+        justSubmittedRef.current = false;
+        requestAnimationFrame(() => {
+          listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        setRecentNewIds((prev) => prev.filter((id) => !addedIds.includes(id)));
+        badgeTimersRef.current = badgeTimersRef.current.filter((t) => t !== timeoutId);
+      }, 15000);
+      badgeTimersRef.current.push(timeoutId);
+      return;
+    }
+
+    justSubmittedRef.current = false;
+  }, [bdRecords]);
+
+  const recentNewIdSet = useMemo(() => new Set(recentNewIds), [recentNewIds]);
 
   const unitSuggestions = useMemo(() => {
     const q = unitInput.trim().toLowerCase();
@@ -215,7 +279,7 @@ export function InputBdPanel({
 
   const filteredBdRecords = useMemo(() => {
     const q = bdSearch.trim().toLowerCase();
-    return bdRecords.filter((rec) => {
+    const matched = bdRecords.filter((rec) => {
       if (statusFilter !== 'ALL' && rec.status !== statusFilter) return false;
       if (groupFilter !== 'ALL' && rec.fleetGroup !== groupFilter) return false;
       if (onlyWithMr && normalizeMrList(rec.mrNumbers).length === 0) return false;
@@ -239,7 +303,28 @@ export function InputBdPanel({
         statusLabel.includes(q)
       );
     });
-  }, [bdRecords, bdSearch, statusFilter, groupFilter, onlyWithMr, onlyAgingOver6h, nowMs]);
+
+    if (recentNewIds.length === 0) return matched;
+
+    const orderMap = new Map(recentNewIds.map((id, idx) => [id, idx]));
+    return [...matched].sort((a, b) => {
+      const aRank = orderMap.get(a.id);
+      const bRank = orderMap.get(b.id);
+      if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+      if (aRank !== undefined) return -1;
+      if (bRank !== undefined) return 1;
+      return 0;
+    });
+  }, [
+    bdRecords,
+    bdSearch,
+    statusFilter,
+    groupFilter,
+    onlyWithMr,
+    onlyAgingOver6h,
+    nowMs,
+    recentNewIds,
+  ]);
 
   const agingOver6hCount = useMemo(
     () =>
@@ -272,6 +357,7 @@ export function InputBdPanel({
       setFormError(res.message ?? 'Gagal menginput unit BD.');
       return;
     }
+    justSubmittedRef.current = true;
     clearPanelDraft();
     setRestoredDraft(false);
     setUnitInput('');
@@ -286,6 +372,11 @@ export function InputBdPanel({
     setFormError('');
     setShowSuggestions(false);
     setMobileFormOpen(false);
+    setBdSearch('');
+    setStatusFilter('ALL');
+    setGroupFilter('ALL');
+    setOnlyWithMr(false);
+    setOnlyAgingOver6h(false);
   };
 
   const handleClearDraft = () => {
@@ -304,13 +395,13 @@ export function InputBdPanel({
   };
 
   return (
-    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[420px] xl:min-h-[560px] xl:h-[calc(100vh-245px)]">
+    <section className="bg-white border border-slate-200 rounded-lg flex flex-col min-h-[420px] xl:min-h-[calc(100vh-245px)]">
       {/* Header & Export Actions */}
-      <div className="px-3.5 sm:px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="px-3.5 sm:px-4 py-2.5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Input BD Unit</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Unit yang terinput di sini otomatis berpindah dari Unit Running ke tabel BD (dilengkapi Durasi BD real-time, PIC &amp; ETR).
+            Unit yang terinput otomatis masuk di baris teratas tabel BD (dilengkapi Durasi BD real-time, PIC &amp; ETR).
           </p>
         </div>
 
@@ -390,7 +481,7 @@ export function InputBdPanel({
         onSubmit={handleSubmit}
         className={`${
           mobileFormOpen ? 'block' : 'hidden'
-        } md:block px-3.5 sm:px-4 py-3 bg-slate-50 border-b border-slate-200 space-y-2`}
+        } md:block px-3.5 sm:px-4 py-2.5 bg-slate-50 border-b border-slate-200 space-y-1.5`}
       >
         <datalist id="bd-location-suggestions">
           {BD_LOCATION_SUGGESTIONS.map((loc) => (
@@ -657,7 +748,7 @@ export function InputBdPanel({
       </form>
 
       {/* Filter Toolbar for BD Table */}
-      <div className="px-3.5 sm:px-4 py-2.5 border-b border-slate-200 space-y-2">
+      <div ref={listTopRef} className="px-3.5 sm:px-4 py-2 border-b border-slate-200 space-y-1.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="relative flex-1 sm:max-w-xs">
             <Search
@@ -768,9 +859,15 @@ export function InputBdPanel({
             const split = computeBdTimeSplit(rec, nowMs);
             const severity = getAgingSeverity(split.totalMinutes);
             const etrStatus = computeEtrStatus(rec.tanggalBd, rec.jamBd, rec.etr, nowMs);
+            const isRecentNew = recentNewIdSet.has(rec.id);
 
             return (
-              <div key={rec.id} className="p-3.5 space-y-3 bg-white">
+              <div
+                key={rec.id}
+                className={`p-3.5 space-y-3 transition-colors ${
+                  isRecentNew ? 'bg-blue-50/70' : 'bg-white'
+                }`}
+              >
                 {/* Card Top Row: No, Unit, Durasi, & RFU / Delete Actions */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center flex-wrap gap-1.5 min-w-0">
@@ -780,6 +877,11 @@ export function InputBdPanel({
                     <span className="text-sm font-mono font-bold text-slate-900 truncate">
                       {rec.unitCode}
                     </span>
+                    {isRecentNew && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold tracking-wide bg-blue-600 text-white rounded shrink-0">
+                        BARU
+                      </span>
+                    )}
                     <span
                       className={`px-1.5 py-0.5 text-[11px] font-mono tabular-nums rounded border shrink-0 ${
                         severity === 'critical'
@@ -952,7 +1054,7 @@ export function InputBdPanel({
       </div>
 
       {/* DESKTOP INLINE EDITABLE SPREADSHEET TABLE (md+) */}
-      <div className="hidden md:block flex-1 overflow-auto ops-scroll">
+      <div ref={tableScrollRef} className="hidden md:block overflow-x-auto ops-scroll">
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
             <tr>
@@ -994,16 +1096,29 @@ export function InputBdPanel({
                 const split = computeBdTimeSplit(rec, nowMs);
                 const severity = getAgingSeverity(split.totalMinutes);
                 const etrStatus = computeEtrStatus(rec.tanggalBd, rec.jamBd, rec.etr, nowMs);
+                const isRecentNew = recentNewIdSet.has(rec.id);
 
                 return (
-                  <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors align-top">
+                  <tr
+                    key={rec.id}
+                    className={`transition-colors align-top ${
+                      isRecentNew ? 'bg-blue-50/70 hover:bg-blue-50' : 'hover:bg-slate-50/80'
+                    }`}
+                  >
                     <td className="py-2.5 pl-3.5 pr-1.5 font-mono tabular-nums text-slate-400">
                       {idx + 1}
                     </td>
 
                     <td className="py-2.5 px-1.5 whitespace-nowrap">
-                      <div className="font-mono font-semibold text-slate-900">
-                        {rec.unitCode}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-semibold text-slate-900">
+                          {rec.unitCode}
+                        </span>
+                        {isRecentNew && (
+                          <span className="px-1 py-0.5 text-[9px] font-bold tracking-wide bg-blue-600 text-white rounded">
+                            BARU
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] font-medium text-slate-400">
                         {rec.fleetGroup}
